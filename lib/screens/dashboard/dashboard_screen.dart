@@ -1,288 +1,356 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/utils/date_formatter.dart';
-import '../../models/vital_status.dart';
-import '../../providers/vital_provider.dart';
-import '../../providers/user_provider.dart';
-import '../../screens/emergency/emergency_screen.dart';
-import 'widgets/confidence_indicator.dart';
-import 'widgets/status_badge.dart';
-import 'widgets/vital_card.dart';
+import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../widgets/atoms/vital_card_atom.dart';
+import '../../widgets/atoms/skeleton_loader.dart';
+import '../../widgets/atoms/pill_widget.dart';
+import '../../router/app_router.dart';
 
-class DashboardScreen extends ConsumerStatefulWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  bool _emergencyPushed = false;
+class _DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin {
+  bool _loading = true;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final eventAsync = ref.watch(healthEventProvider);
-    final user = ref.watch(userProvider);
-
-    // Auto-push Emergency screen once per emergency event
-    ref.listen<AsyncValue>(healthEventProvider, (_, next) {
-      next.whenData((event) {
-        if (event.isEmergency && !_emergencyPushed) {
-          _emergencyPushed = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.of(context)
-                .push(MaterialPageRoute(
-                  builder: (_) => EmergencyScreen(event: event),
-                  fullscreenDialog: true,
-                ))
-                .then((_) => _emergencyPushed = false);
-          });
-        }
-        if (!event.isEmergency) _emergencyPushed = false;
-      });
-    });
-
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
-      body: eventAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-        error: (e, _) => Center(
-          child: Text('Stream error: $e',
-              style: TextStyle(color: AppColors.textSecondary)),
-        ),
-        data: (event) {
-          final r = event.reading;
-          return CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // â”€â”€ App bar / greeting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-              SliverAppBar(
-                backgroundColor: AppColors.scaffold,
-                elevation: 0,
-                floating: true,
-                expandedHeight: 100,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 48, 20, 8),
-                    child: _GreetingHeader(userName: user?.name ?? 'there'),
-                  ),
-                ),
-              ),
-
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    // â”€â”€ Overall status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                    StatusBadge(
-                      status: event.overallStatus,
-                      message: event.statusMessage,
-                    ),
-                    const SizedBox(height: 12),
-
-                    // â”€â”€ Confidence score â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                    ConfidenceIndicator(score: event.confidenceScore),
-                    const SizedBox(height: 16),
-
-                    // â”€â”€ Section label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4, bottom: 10),
-                      child: Row(
+      backgroundColor: AppColors.bgLight,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(gradient: AppColors.appBackground),
+            ),
+          ),
+          SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const SizedBox(height: 8),
+                      _TopBar(pulseController: _pulseController),
+                      const SizedBox(height: 20),
+                      const _HeroCard(),
+                      const SizedBox(height: 24),
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Vital Signs',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            'Updated ${DateFormatter.time(r.timestamp)}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textHint,
-                            ),
+                          Text('Live Vitals', style: AppTextStyles.h2),
+                          TextButton(
+                            onPressed: () {},
+                            child: Text('See all →',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.primary)),
                           ),
                         ],
                       ),
-                    ),
-
-                    // â”€â”€ Vitals grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.25,
-                      children: [
-                        VitalCard(
-                          label: 'Heart Rate',
-                          value: r.heartRate.toStringAsFixed(1),
-                          unit: 'BPM',
-                          status: event.hrStatus,
-                          icon: Icons.favorite_rounded,
-                          isPulsing: true,
-                        ),
-                        VitalCard(
-                          label: 'SpOâ‚‚',
-                          value: r.spO2.toStringAsFixed(1),
-                          unit: '%',
-                          status: event.spo2Status,
-                          icon: Icons.water_drop_rounded,
-                        ),
-                        VitalCard(
-                          label: 'HRV',
-                          value: r.hrv.toStringAsFixed(1),
-                          unit: 'ms',
-                          status: event.hrvStatus,
-                          icon: Icons.show_chart_rounded,
-                        ),
-                        VitalCard(
-                          label: 'Respiration',
-                          value: r.respirationRate.toStringAsFixed(1),
-                          unit: 'br/min',
-                          status: event.respirationStatus,
-                          icon: Icons.air_rounded,
-                        ),
-                        VitalCard(
-                          label: 'Activity',
-                          value: _activityLabel(r.activity.name),
-                          unit: '',
-                          status: VitalStatus.normal,
-                          icon: Icons.directions_run_rounded,
-                        ),
-                        VitalCard(
-                          label: 'Fall Status',
-                          value: r.fallDetected ? 'FALL!' : 'None',
-                          unit: '',
-                          status: r.fallDetected
-                              ? VitalStatus.emergency
-                              : VitalStatus.normal,
-                          icon: Icons.warning_amber_rounded,
-                        ),
-                      ],
-                    ),
-
-                    // â”€â”€ Warning banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                    if (event.overallStatus == VitalStatus.warning)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 16),
-                        child: _WarningBanner(message: event.statusMessage),
-                      ),
-                  ]),
+                      const SizedBox(height: 12),
+                      _loading ? const _SkeletonGrid() : const _VitalGrid(),
+                      const SizedBox(height: 100),
+                    ]),
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  String _activityLabel(String raw) {
-    switch (raw) {
-      case 'lyingDown':
-        return 'Lying Down';
-      default:
-        return raw[0].toUpperCase() + raw.substring(1);
-    }
-  }
 }
 
-// â”€â”€ Greeting header widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class _GreetingHeader extends StatelessWidget {
-  final String userName;
-  const _GreetingHeader({required this.userName});
-
-  String get _greeting {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good Morning';
-    if (h < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }
+class _TopBar extends StatelessWidget {
+  final AnimationController pulseController;
+  const _TopBar({required this.pulseController});
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                '$_greeting, $userName',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                DateFormatter.date(DateTime.now()),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
+              Text('Good morning,', style: AppTextStyles.caption),
+              Text('Sarah', style: AppTextStyles.h1),
             ],
           ),
         ),
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: AppColors.primaryLightest,
-          child: Text(
-            userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined,
+                  color: AppColors.textPrimary, size: 24),
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRouter.notifications),
             ),
-          ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppColors.danger,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 4),
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: AppColors.primaryBg,
+          child: Text('S',
+              style: AppTextStyles.h2.copyWith(color: AppColors.primary)),
         ),
       ],
     );
   }
 }
 
-// â”€â”€ Warning banner widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class _WarningBanner extends StatelessWidget {
-  final String message;
-  const _WarningBanner({required this.message});
+class _HeroCard extends StatelessWidget {
+  const _HeroCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.warningBg,
-        border: Border.all(color: AppColors.warningBorder),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_rounded, color: AppColors.warning, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+        gradient: AppColors.heroCard,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.shadowLg,
+            blurRadius: 28,
+            offset: Offset(0, 8),
           ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Overall Health',
+            style: AppTextStyles.caption.copyWith(
+              color: Colors.white.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('Excellent', style: AppTextStyles.h1White()),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.favorite_rounded,
+                  color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Text('94 / 100',
+                  style: AppTextStyles.h2White().copyWith(fontSize: 20)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _WhitePill('Confidence: 89%', outline: true),
+              const SizedBox(width: 8),
+              _WhitePill('Walking', outline: false),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WhitePill extends StatelessWidget {
+  final String label;
+  final bool outline;
+  const _WhitePill(this.label, {required this.outline});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: outline ? Colors.transparent : Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(999),
+        border: outline
+            ? Border.all(color: Colors.white.withOpacity(0.6))
+            : null,
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.captionWhite()
+            .copyWith(fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
+class _SkeletonGrid extends StatelessWidget {
+  const _SkeletonGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.95,
+      children: List.generate(
+        6,
+        (_) => const SkeletonLoader(
+            width: double.infinity, height: 140, radius: 16),
+      ),
+    );
+  }
+}
+
+class _VitalGrid extends StatelessWidget {
+  const _VitalGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.9,
+      children: [
+        VitalCardAtom(
+          name: 'Heart Rate',
+          value: '72',
+          unit: 'bpm',
+          percent: 0.60,
+          status: VitalDisplayStatus.normal,
+          onTap: () => Navigator.pushNamed(
+              context, '${AppRouter.vitalsDetail}/heartRate'),
+        ),
+        VitalCardAtom(
+          name: 'SpO₂',
+          value: '98',
+          unit: '%',
+          percent: 0.90,
+          status: VitalDisplayStatus.normal,
+          onTap: () =>
+              Navigator.pushNamed(context, '${AppRouter.vitalsDetail}/spo2'),
+        ),
+        VitalCardAtom(
+          name: 'HRV',
+          value: '45',
+          unit: 'ms',
+          percent: 0.55,
+          status: VitalDisplayStatus.normal,
+          onTap: () =>
+              Navigator.pushNamed(context, '${AppRouter.vitalsDetail}/hrv'),
+        ),
+        VitalCardAtom(
+          name: 'Respiration',
+          value: '16',
+          unit: '/min',
+          percent: 0.65,
+          status: VitalDisplayStatus.normal,
+          onTap: () => Navigator.pushNamed(
+              context, '${AppRouter.vitalsDetail}/respiration'),
+        ),
+        // Activity card
+        GestureDetector(
+          onTap: () {},
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.bgWhite,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.shadowSm,
+                  blurRadius: 16,
+                  offset: Offset(0, 2),
+                ),
+              ],
+              border: const Border(
+                bottom: BorderSide(color: AppColors.success, width: 3),
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.directions_walk_rounded,
+                    color: AppColors.success, size: 36),
+                const SizedBox(height: 8),
+                PillWidget('Walking', variant: PillVariant.success),
+                const SizedBox(height: 4),
+                Text('Activity', style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+        ),
+        // Fall detection card
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.bgWhite,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.shadowSm,
+                blurRadius: 16,
+                offset: Offset(0, 2),
+              ),
+            ],
+            border: const Border(
+              bottom: BorderSide(color: AppColors.success, width: 3),
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.shield_outlined,
+                  color: AppColors.success, size: 36),
+              const SizedBox(height: 8),
+              Text('Safe',
+                  style: AppTextStyles.h2.copyWith(color: AppColors.success)),
+              const SizedBox(height: 4),
+              Text('Fall Detection', style: AppTextStyles.caption),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

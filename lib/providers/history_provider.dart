@@ -12,6 +12,8 @@ class ReadingHistoryNotifier extends StateNotifier<List<VitalReading>> {
       });
     });
   }
+
+  void clearAll() => state = [];
 }
 
 final historyProvider =

@@ -1,12 +1,7 @@
-﻿import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../../engine/chatbot_engine.dart';
-
-class _Message {
-  final String text;
-  final bool isUser;
-  _Message(this.text, {required this.isUser});
-}
+import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../widgets/atoms/pill_widget.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -15,33 +10,63 @@ class ChatbotScreen extends StatefulWidget {
   State<ChatbotScreen> createState() => _ChatbotScreenState();
 }
 
-class _ChatbotScreenState extends State<ChatbotScreen> {
+class _ChatbotScreenState extends State<ChatbotScreen>
+    with SingleTickerProviderStateMixin {
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
-  final List<_Message> _messages = [
-    _Message(ChatbotEngine.greeting, isUser: false),
-  ];
   bool _isTyping = false;
+  late AnimationController _dotsController;
 
-  Future<void> _send() async {
+  final List<_ChatMessage> _messages = [
+    _ChatMessage.user('What does my HRV reading mean?'),
+    _ChatMessage.bot(
+      'Heart Rate Variability (HRV) measures the variation in time between heartbeats. '
+      'Your current HRV of 45ms is in the normal range — higher values generally indicate '
+      'better cardiovascular fitness and stress resilience.',
+      vital: _EmbeddedVital('HRV', '45 ms', VitalDisplayStatus.normal),
+    ),
+    _ChatMessage.user("Is my SpO₂ okay right now?"),
+    _ChatMessage.bot(
+      "Your SpO₂ reading of 93% is slightly below the normal threshold of 95%. "
+      "This may be due to mild exertion or positioning. If it stays below 94% "
+      "for more than a few minutes, consider resting and taking a deep breath.",
+      vital: _EmbeddedVital('SpO₂', '93%', VitalDisplayStatus.warning),
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _dotsController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _inputCtrl.dispose();
+    _scrollCtrl.dispose();
+    _dotsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendMessage() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
-
+    _inputCtrl.clear();
     setState(() {
-      _messages.add(_Message(text, isUser: true));
+      _messages.add(_ChatMessage.user(text));
       _isTyping = true;
-      _inputCtrl.clear();
     });
     _scrollToBottom();
-
-    // Simulate bot "thinking" delay for natural feel
-    await Future.delayed(const Duration(milliseconds: 900));
-
+    await Future.delayed(const Duration(milliseconds: 1500));
     if (!mounted) return;
-    final response = ChatbotEngine.getResponse(text);
     setState(() {
       _isTyping = false;
-      _messages.add(_Message(response, isUser: false));
+      _messages.add(_ChatMessage.bot(
+        "I'm analyzing your health data and will provide personalized insights based on your vitals.",
+      ));
     });
     _scrollToBottom();
   }
@@ -61,276 +86,264 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
+      backgroundColor: AppColors.bgWhite,
       appBar: AppBar(
-        backgroundColor: AppColors.scaffold,
-        elevation: 0,
-        title: Row(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.primaryLightest,
-              child: const Icon(Icons.health_and_safety_rounded,
-                  color: AppColors.primary, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Health Assistant',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary),
+                Text('Cardiva AI', style: AppTextStyles.h1),
+                const SizedBox(width: 4),
+                const Icon(Icons.auto_awesome_rounded,
+                    color: Color(0xFF8B5CF6), size: 18),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.success,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-                Text(
-                  'Always online',
-                  style: TextStyle(
-                      fontSize: 10, color: AppColors.normal),
-                ),
+                const SizedBox(width: 4),
+                Text('Online', style: AppTextStyles.caption),
               ],
             ),
           ],
         ),
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          // â”€â”€ Message list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Expanded(
             child: ListView.builder(
               controller: _scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               itemCount: _messages.length + (_isTyping ? 1 : 0),
-              itemBuilder: (ctx, i) {
+              itemBuilder: (_, i) {
                 if (_isTyping && i == _messages.length) {
-                  return const Align(
-                    alignment: Alignment.centerLeft,
-                    child: _TypingBubble(),
-                  );
+                  return _TypingIndicator(controller: _dotsController);
                 }
-                final m = _messages[i];
-                return _MessageBubble(message: m);
+                return _MessageBubble(message: _messages[i]);
               },
             ),
           ),
-
-          // â”€â”€ Input row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Container(
-            color: AppColors.cardBg,
             padding: EdgeInsets.fromLTRB(
-              16,
-              10,
-              16,
-              MediaQuery.of(context).viewInsets.bottom + 10,
+              12, 10, 12, MediaQuery.of(context).padding.bottom + 10,
             ),
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  Expanded(
+            decoration: const BoxDecoration(
+              color: AppColors.bgWhite,
+              border: Border(top: BorderSide(color: Color(0xFFEAEEF5))),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.mic_none_rounded,
+                      color: AppColors.textSecondary),
+                  onPressed: () {},
+                ),
+                Expanded(
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.bgLight,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                     child: TextField(
                       controller: _inputCtrl,
-                      onSubmitted: (_) => _send(),
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(
-                          fontSize: 14, color: AppColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'Ask about your vitalsâ€¦',
-                        hintStyle: TextStyle(
-                            fontSize: 13, color: AppColors.textHint),
-                        filled: true,
-                        fillColor: AppColors.inputFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 12,
-                        ),
+                      style: AppTextStyles.body,
+                      decoration: const InputDecoration(
+                        hintText: 'Ask about your health…',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        filled: false,
                       ),
+                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  MaterialButton(
-                    onPressed: _send,
-                    color: AppColors.primary,
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(14),
-                    elevation: 0,
-                    child: const Icon(Icons.send_rounded,
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_upward_rounded,
                         color: Colors.white, size: 20),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-
-  @override
-  void dispose() {
-    _inputCtrl.dispose();
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
 }
 
-// â”€â”€ Message bubble â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _MessageBubble extends StatelessWidget {
-  final _Message message;
+  final _ChatMessage message;
   const _MessageBubble({required this.message});
 
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUser;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isUser) ...[
-            CircleAvatar(
-              radius: 14,
-              backgroundColor: AppColors.primaryLightest,
-              child: const Icon(Icons.health_and_safety_rounded,
-                  size: 14, color: AppColors.primary),
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isUser ? AppColors.primary : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isUser ? 18 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 18),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.text,
+              style: AppTextStyles.body.copyWith(
+                color: isUser ? Colors.white : AppColors.textPrimary,
+              ),
             ),
-            const SizedBox(width: 8),
+            if (message.vital != null) ...[
+              const SizedBox(height: 8),
+              _EmbeddedVitalCard(vital: message.vital!),
+            ],
           ],
-          Flexible(
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.72,
-              ),
-              decoration: BoxDecoration(
-                color: isUser ? AppColors.primary : AppColors.cardBg,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isUser ? 18 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 18),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isUser ? Colors.white : AppColors.textPrimary,
-                  height: 1.45,
-                ),
-              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmbeddedVitalCard extends StatelessWidget {
+  final _EmbeddedVital vital;
+  const _EmbeddedVitalCard({required this.vital});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.statusColor(vital.status);
+    final pillVariant = vital.status == VitalDisplayStatus.normal
+        ? PillVariant.success
+        : vital.status == VitalDisplayStatus.warning
+            ? PillVariant.warning
+            : PillVariant.danger;
+    final label = vital.status == VitalDisplayStatus.normal
+        ? 'Normal'
+        : vital.status == VitalDisplayStatus.warning
+            ? 'Warning'
+            : 'Critical';
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(vital.name, style: AppTextStyles.caption),
+                Text(vital.value, style: AppTextStyles.h2),
+              ],
             ),
           ),
-          if (isUser) const SizedBox(width: 8),
+          PillWidget(label, variant: pillVariant),
         ],
       ),
     );
   }
 }
 
-// â”€â”€ Typing indicator (3 bouncing dots) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class _TypingBubble extends StatefulWidget {
-  const _TypingBubble();
-
-  @override
-  State<_TypingBubble> createState() => _TypingBubbleState();
-}
-
-class _TypingBubbleState extends State<_TypingBubble>
-    with TickerProviderStateMixin {
-  late final List<AnimationController> _ctrls;
-  late final List<Animation<double>> _anims;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrls = List.generate(
-      3,
-      (_) => AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 600),
-      ),
-    );
-    _anims = _ctrls
-        .map((c) => Tween<double>(begin: 0, end: -8).animate(
-              CurvedAnimation(parent: c, curve: Curves.easeInOut),
-            ))
-        .toList();
-
-    for (int i = 0; i < 3; i++) {
-      Future.delayed(Duration(milliseconds: i * 180), () {
-        if (mounted) _ctrls[i].repeat(reverse: true);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final c in _ctrls) {
-      c.dispose();
-    }
-    super.dispose();
-  }
+class _TypingIndicator extends StatelessWidget {
+  final AnimationController controller;
+  const _TypingIndicator({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 36, top: 5, bottom: 5),
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.cardBg,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomRight: Radius.circular(18),
-            bottomLeft: Radius.circular(4),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: List.generate(
-            3,
-            (i) => AnimatedBuilder(
-              animation: _anims[i],
+          children: List.generate(3, (i) {
+            final anim = Tween<double>(begin: 0, end: -6).animate(
+              CurvedAnimation(
+                parent: controller,
+                curve: Interval(i * 0.2, (i * 0.2 + 0.4).clamp(0.0, 1.0),
+                    curve: Curves.easeInOut),
+              ),
+            );
+            return AnimatedBuilder(
+              animation: controller,
               builder: (_, __) => Transform.translate(
-                offset: Offset(0, _anims[i].value),
+                offset: Offset(0, anim.value),
                 child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: 8,
-                  height: 8,
+                  width: 7,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: const BoxDecoration(
-                    color: AppColors.primary,
+                    color: AppColors.textSecondary,
                     shape: BoxShape.circle,
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
       ),
     );
   }
+}
+
+class _ChatMessage {
+  final String text;
+  final bool isUser;
+  final _EmbeddedVital? vital;
+  _ChatMessage.user(this.text)
+      : isUser = true,
+        vital = null;
+  _ChatMessage.bot(this.text, {this.vital}) : isUser = false;
+}
+
+class _EmbeddedVital {
+  final String name;
+  final String value;
+  final VitalDisplayStatus status;
+  const _EmbeddedVital(this.name, this.value, this.status);
 }
