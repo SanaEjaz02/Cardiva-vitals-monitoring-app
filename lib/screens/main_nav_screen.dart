@@ -1,84 +1,56 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/constants/app_colors.dart';
-import 'chatbot/chatbot_screen.dart';
+import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../widgets/atoms/bottom_nav_bar.dart';
+import '../widgets/atoms/cardiva_fab.dart';
+import '../router/app_router.dart';
 import 'dashboard/dashboard_screen.dart';
+import 'vitals/vitals_screen.dart';
 import 'history/history_screen.dart';
 import 'profile/profile_screen.dart';
+import 'emergency/emergency_popup.dart';
 
-final _navIndexProvider = StateProvider<int>((ref) => 0);
-
-class MainNavScreen extends ConsumerWidget {
+class MainNavScreen extends StatefulWidget {
   const MainNavScreen({super.key});
+
+  @override
+  State<MainNavScreen> createState() => _MainNavScreenState();
+}
+
+class _MainNavScreenState extends State<MainNavScreen> {
+  int _activeIndex = 0;
 
   static const _screens = [
     DashboardScreen(),
+    VitalsScreen(),
     HistoryScreen(),
-    ChatbotScreen(),
     ProfileScreen(),
   ];
 
-  static const _items = [
-    BottomNavigationBarItem(
-      icon: Icon(Icons.dashboard_rounded),
-      activeIcon: Icon(Icons.dashboard_rounded),
-      label: 'Dashboard',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.history_rounded),
-      activeIcon: Icon(Icons.history_rounded),
-      label: 'History',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.chat_bubble_outline_rounded),
-      activeIcon: Icon(Icons.chat_bubble_rounded),
-      label: 'Assistant',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.person_outline_rounded),
-      activeIcon: Icon(Icons.person_rounded),
-      label: 'Profile',
-    ),
-  ];
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final idx = ref.watch(_navIndexProvider);
-
+  Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgLight,
       body: IndexedStack(
-        index: idx,
+        index: _activeIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.cardBg,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withOpacity(0.08),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: BottomNavigationBar(
-            currentIndex: idx,
-            onTap: (i) => ref.read(_navIndexProvider.notifier).state = i,
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            selectedItemColor: AppColors.primary,
-            unselectedItemColor: AppColors.textHint,
-            selectedLabelStyle: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-            unselectedLabelStyle: TextStyle(fontSize: 11),
-            items: _items,
-          ),
-        ),
+      floatingActionButton: _activeIndex <= 1
+          ? Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).padding.bottom + 76,
+              ),
+              child: GestureDetector(
+                onLongPress: () => EmergencyPopup.show(context, 'manual'),
+                child: CardivaFab(
+                  onTap: () => Navigator.pushNamed(context, AppRouter.chat),
+                ),
+              ),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: CardivaBottomNav(
+        activeIndex: _activeIndex,
+        onTap: (i) => setState(() => _activeIndex = i),
       ),
     );
   }
