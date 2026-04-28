@@ -1,395 +1,288 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/utils/date_formatter.dart';
-import '../../core/utils/validators.dart';
-import '../../models/emergency_contact.dart';
-import '../../providers/user_provider.dart';
-import 'widgets/debug_panel.dart';
-import 'widgets/emergency_contact_tile.dart';
+import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../widgets/atoms/pill_widget.dart';
+import '../../router/app_router.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(userProvider);
-    final contacts = ref.watch(emergencyContactsProvider);
-
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.scaffold,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-          SliverAppBar(
-            backgroundColor: AppColors.primary,
-            expandedHeight: 160,
-            floating: false,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: 36,
-                        backgroundColor: AppColors.primaryLightest,
-                        child: Text(
-                          user?.name.isNotEmpty == true
-                              ? user!.name[0].toUpperCase()
-                              : 'U',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        user?.name ?? 'Demo User',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        user?.email ?? '',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // â”€â”€ Profile info card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                _SectionCard(
-                  title: 'Personal Information',
-                  action: TextButton.icon(
-                    onPressed: () =>
-                        _showEditProfileDialog(context, ref, user),
-                    icon: const Icon(Icons.edit_rounded, size: 14),
-                    label: Text('Edit',
-                        style: TextStyle(fontSize: 12)),
-                  ),
-                  child: user == null
-                      ? const SizedBox.shrink()
-                      : Column(
-                          children: [
-                            _InfoRow('Blood Group', user.bloodGroup),
-                            _InfoRow('Gender', user.gender),
-                            _InfoRow('Phone', user.phone),
-                            _InfoRow(
-                              'Date of Birth',
-                              DateFormatter.date(user.dateOfBirth),
-                            ),
-                          ],
-                        ),
-                ),
-                const SizedBox(height: 14),
-
-                // â”€â”€ Emergency contacts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                _SectionCard(
-                  title: 'Emergency Contacts',
-                  action: IconButton(
-                    icon: const Icon(Icons.add_circle_rounded,
-                        color: AppColors.primary),
-                    onPressed: () =>
-                        _showAddContactDialog(context, ref, user?.id),
-                    tooltip: 'Add contact',
-                  ),
-                  child: contacts.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            'No emergency contacts added yet.',
-                            style: TextStyle(
-                                fontSize: 13, color: AppColors.textHint),
-                          ),
-                        )
-                      : Column(
-                          children: contacts
-                              .map((c) => EmergencyContactTile(
-                                    contact: c,
-                                    onDelete: () => ref
-                                        .read(emergencyContactsProvider
-                                            .notifier)
-                                        .remove(c.id),
-                                    onSetPrimary: () => ref
-                                        .read(emergencyContactsProvider
-                                            .notifier)
-                                        .setPrimary(c.id),
-                                  ))
-                              .toList(),
-                        ),
-                ),
-                const SizedBox(height: 14),
-
-                // â”€â”€ Debug panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                const DebugPanel(),
-                const SizedBox(height: 14),
-
-                // â”€â”€ Sign out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                OutlinedButton.icon(
-                  onPressed: () => _confirmSignOut(context, ref),
-                  icon: const Icon(Icons.logout_rounded),
-                  label: Text('Sign Out',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.emergency,
-                    side: const BorderSide(color: AppColors.emergencyBorder),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddContactDialog(
-      BuildContext context, WidgetRef ref, String? userId) {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final relCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Add Emergency Contact',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-        content: Form(
-          key: formKey,
+      backgroundColor: AppColors.bgLight,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              _DialogField(ctrl: nameCtrl, label: 'Name', hint: 'Full name'),
-              const SizedBox(height: 10),
-              _DialogField(
-                ctrl: phoneCtrl,
-                label: 'Phone',
-                hint: '+1234567890',
-                keyboardType: TextInputType.phone,
-                validator: Validators.phone,
-              ),
-              const SizedBox(height: 10),
-              _DialogField(
-                ctrl: relCtrl,
-                label: 'Relation',
-                hint: 'e.g. Family, Friend',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              ref.read(emergencyContactsProvider.notifier).add(
-                    EmergencyContact(
-                      id: const Uuid().v4(),
-                      userId: userId ?? 'demo-user-001',
-                      name: nameCtrl.text.trim(),
-                      phone: phoneCtrl.text.trim(),
-                      relation: relCtrl.text.trim(),
+              const SizedBox(height: 20),
+              // Avatar + name
+              Center(
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundColor: AppColors.primaryDeep,
+                      child: Text(
+                        'S',
+                        style: AppTextStyles.h1White().copyWith(fontSize: 32),
+                      ),
                     ),
-                  );
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: Text('Add', style: TextStyle()),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditProfileDialog(BuildContext context, WidgetRef ref, user) {
-    // Simplified â€” just shows a snackbar for now;
-    // a full edit form can be wired in Phase 11.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Profile editing coming soon.',
-            style: TextStyle(fontSize: 13)),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
-  void _confirmSignOut(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Sign Out',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-        content: Text('Are you sure you want to sign out?',
-            style: TextStyle(fontSize: 13)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ref.read(userProvider.notifier).clearUser();
-              Navigator.of(context)
-                  .pushNamedAndRemoveUntil('/login', (_) => false);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.emergency,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: Text('Sign Out', style: TextStyle()),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final Widget child;
-  final Widget? action;
-
-  const _SectionCard({required this.title, required this.child, this.action});
-
-  @override
-  Widget build(BuildContext context) => Card(
-        elevation: 0,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        color: AppColors.cardBg,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+                    const SizedBox(height: 12),
+                    Text('Sarah Malik', style: AppTextStyles.h1),
+                    Text('sarah@cardiva.app', style: AppTextStyles.caption),
+                    const SizedBox(height: 6),
+                    TextButton(
+                      onPressed: () {},
+                      child: Text('Edit Profile',
+                          style: AppTextStyles.body
+                              .copyWith(color: AppColors.primary)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Stats strip
               Row(
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (action != null) action!,
+                  _StatCard(label: 'Days Monitored', value: '47'),
+                  const SizedBox(width: 10),
+                  _StatCard(label: 'Alerts Sent', value: '3'),
+                  const SizedBox(width: 10),
+                  _StatCard(label: 'Avg Score', value: '91'),
                 ],
               ),
-              const SizedBox(height: 10),
-              child,
+              const SizedBox(height: 24),
+              // Group 1: Health & Safety
+              _GroupCard(
+                children: [
+                  _ProfileRow(
+                    icon: Icons.contacts_rounded,
+                    label: 'Emergency Contacts',
+                    badge: PillWidget('2', variant: PillVariant.primary),
+                    onTap: () {},
+                  ),
+                  _ProfileRow(
+                    icon: Icons.people_rounded,
+                    label: 'Attendants',
+                    badge: PillWidget('1', variant: PillVariant.primary),
+                    onTap: () => Navigator.pushNamed(
+                        context, AppRouter.settingsAttendants),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.tune_rounded,
+                    label: 'Threshold Settings',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRouter.settings),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.notifications_outlined,
+                    label: 'Notification Preferences',
+                    onTap: () {},
+                    last: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Group 2: Device & Account
+              _GroupCard(
+                children: [
+                  _ProfileRow(
+                    icon: Icons.watch_rounded,
+                    label: 'Device Status',
+                    badge: PillWidget('Connected', variant: PillVariant.success),
+                    onTap: () {},
+                  ),
+                  _ProfileRow(
+                    icon: Icons.download_outlined,
+                    label: 'Health Report',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRouter.weeklyReport),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.help_outline_rounded,
+                    label: 'Help & Support',
+                    onTap: () {},
+                  ),
+                  _ProfileRow(
+                    icon: Icons.feedback_outlined,
+                    label: 'Feedback',
+                    onTap: () {},
+                  ),
+                  _ProfileRow(
+                    icon: Icons.settings_outlined,
+                    label: 'Settings & Privacy',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRouter.settings),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.logout_rounded,
+                    label: 'Log Out',
+                    labelColor: AppColors.danger,
+                    onTap: () => _confirmLogout(context),
+                    last: true,
+                    showChevron: false,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 100),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Log out?', style: AppTextStyles.h2),
+        content: Text(
+            'You will be returned to the login screen.',
+            style: AppTextStyles.body),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushNamedAndRemoveUntil(
+                  context, AppRouter.auth, (_) => false);
+            },
+            child: Text('Log Out',
+                style: AppTextStyles.body
+                    .copyWith(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _InfoRow extends StatelessWidget {
+class _StatCard extends StatelessWidget {
   final String label;
   final String value;
-
-  const _InfoRow(this.label, this.value);
+  const _StatCard({required this.label, required this.value});
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 110,
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value.isEmpty ? 'â€”' : value,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.bgWhite,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+                color: AppColors.shadowSm,
+                blurRadius: 12,
+                offset: Offset(0, 2)),
           ],
         ),
-      );
+        child: Column(
+          children: [
+            Text(label,
+                style: AppTextStyles.caption,
+                textAlign: TextAlign.center),
+            const SizedBox(height: 4),
+            Text(value, style: AppTextStyles.h2),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _DialogField extends StatelessWidget {
-  final TextEditingController ctrl;
-  final String label;
-  final String hint;
-  final TextInputType? keyboardType;
-  final String? Function(String?)? validator;
+class _GroupCard extends StatelessWidget {
+  final List<Widget> children;
+  const _GroupCard({required this.children});
 
-  const _DialogField({
-    required this.ctrl,
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.shadowSm, blurRadius: 12, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? labelColor;
+  final Widget? badge;
+  final VoidCallback? onTap;
+  final bool last;
+  final bool showChevron;
+
+  const _ProfileRow({
+    required this.icon,
     required this.label,
-    required this.hint,
-    this.keyboardType,
-    this.validator,
+    this.labelColor,
+    this.badge,
+    this.onTap,
+    this.last = false,
+    this.showChevron = true,
   });
 
   @override
-  Widget build(BuildContext context) => TextFormField(
-        controller: ctrl,
-        keyboardType: keyboardType,
-        validator: validator ?? (v) => Validators.required(v, label),
-        style: TextStyle(fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          hintStyle:
-              TextStyle(fontSize: 12, color: AppColors.textHint),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: AppColors.primary, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: AppTextStyles.body.copyWith(
+                        color: labelColor ?? AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (badge != null) ...[badge!, const SizedBox(width: 8)],
+                  if (showChevron)
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary, size: 20),
+                ],
+              ),
+            ),
+          ),
         ),
-      );
+        if (!last)
+          const Divider(
+            height: 1,
+            indent: 64,
+            endIndent: 16,
+            color: AppColors.divider,
+          ),
+      ],
+    );
+  }
 }
