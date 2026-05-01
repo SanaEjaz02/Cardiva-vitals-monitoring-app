@@ -3,6 +3,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
 import '../../router/app_router.dart';
+import '../../services/session_service.dart';
 
 class OnboardingScreen extends StatelessWidget {
   final int slide; // 1, 2, or 3
@@ -22,12 +23,16 @@ class OnboardingScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Skip
+              // Skip — mark seen so we never show onboarding again
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () =>
-                      Navigator.pushReplacementNamed(context, AppRouter.auth),
+                  onPressed: () async {
+                    await SessionService.markOnboardingSeen();
+                    if (context.mounted) {
+                      Navigator.pushReplacementNamed(context, AppRouter.auth);
+                    }
+                  },
                   child: Text(
                     'Skip',
                     style: AppTextStyles.caption.copyWith(
@@ -65,17 +70,22 @@ class OnboardingScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              // CTA button
+              // CTA button — mark onboarding seen on the final slide
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    final next = isLast
-                        ? AppRouter.auth
-                        : (slide == 1
-                            ? AppRouter.onboarding2
-                            : AppRouter.onboarding3);
-                    Navigator.pushReplacementNamed(context, next);
+                  onPressed: () async {
+                    if (isLast) {
+                      await SessionService.markOnboardingSeen();
+                      if (context.mounted) {
+                        Navigator.pushReplacementNamed(context, AppRouter.auth);
+                      }
+                    } else {
+                      final next = slide == 1
+                          ? AppRouter.onboarding2
+                          : AppRouter.onboarding3;
+                      Navigator.pushReplacementNamed(context, next);
+                    }
                   },
                   child: Text(isLast ? 'Get Started' : 'Next →'),
                 ),

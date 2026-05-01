@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
@@ -5,6 +6,11 @@ import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Firebase ────────────────────────────────────────────────────────────────
+  // Reads google-services.json (Android) / GoogleService-Info.plist (iOS)
+  // Place those files in the correct locations before running.
+  await Firebase.initializeApp();
 
   // ── Local notifications ─────────────────────────────────────────────────────
   await NotificationService.initialize();
