@@ -3,6 +3,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
+import '../../services/auth_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -147,10 +148,20 @@ class ProfileScreen extends StatelessWidget {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pushNamedAndRemoveUntil(
-                  context, AppRouter.auth, (_) => false);
+            onPressed: () async {
+              Navigator.pop(ctx); // close the dialog first
+
+              // Sign out from Firebase Auth and Google Sign-In.
+              // This clears the persisted session token so the next cold
+              // start will land on the login screen instead of home.
+              await AuthService.signOut();
+
+              if (context.mounted) {
+                // Remove the entire navigation stack so the user cannot
+                // swipe back to any authenticated screen.
+                Navigator.pushNamedAndRemoveUntil(
+                    context, AppRouter.auth, (_) => false);
+              }
             },
             child: Text('Log Out',
                 style: AppTextStyles.body
