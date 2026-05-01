@@ -1,7 +1,60 @@
+import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../router/app_router.dart';
+
+// Returns 0 (empty) to 5 (very strong)
+int _calcStrength(String p) {
+  if (p.isEmpty) return 0;
+  int s = 0;
+  if (p.length >= 6) s++;
+  if (p.length >= 10) s++;
+  if (p.contains(RegExp(r'[A-Z]'))) s++;
+  if (p.contains(RegExp(r'[0-9]'))) s++;
+  if (p.contains(RegExp(r'[^A-Za-z0-9]'))) s++;
+  return s;
+}
+
+// Maps score → label
+String _strengthLabel(int s) {
+  switch (s) {
+    case 1:
+      return 'Weak';
+    case 2:
+      return 'Fair';
+    case 3:
+      return 'Good';
+    case 4:
+      return 'Strong';
+    case 5:
+      return 'Very Strong';
+    default:
+      return '';
+  }
+}
+
+// Maps score → colour
+Color _strengthColor(int s) {
+  switch (s) {
+    case 1:
+      return AppColors.danger;
+    case 2:
+      return AppColors.warning;
+    case 3:
+      return AppColors.warning;
+    case 4:
+      return AppColors.primary;
+    case 5:
+      return AppColors.success;
+    default:
+      return AppColors.divider;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -58,6 +111,17 @@ class _AuthScreenState extends State<AuthScreen>
     setState(() => _isLogin = login);
   }
 
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.danger,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     final valid = _isLogin
         ? _loginFormKey.currentState!.validate()
@@ -65,12 +129,99 @@ class _AuthScreenState extends State<AuthScreen>
     if (!valid) return;
 
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    setState(() => _loading = false);
+    try {
+      if (_isLogin) {
+        await AuthService.signInWithEmail(
+          email: _loginEmail.text.trim(),
+          password: _loginPass.text,
+        );
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+        return; // skip finally setState — widget is gone
+      } else {
+        final cred = await AuthService.signUpWithEmail(
+          email: _registerEmail.text.trim(),
+          password: _registerPass.text,
+        );
+        await cred.user?.updateDisplayName(_registerName.text.trim());
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRouter.setupProfile);
+        return; // skip finally setState — widget is gone
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) _showError(AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-    final dest = _isLogin ? AppRouter.dashboard : AppRouter.setupProfile;
-    Navigator.pushReplacementNamed(context, dest);
+  Future<void> _googleSignIn() async {
+    setState(() => _loading = true);
+    try {
+      final result = await AuthService.signInWithGoogle();
+      if (result == null) {
+        // user cancelled — just stop loading
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      if (!mounted) return;
+      final email = result.user?.email ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Signed in as $email'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 1800),
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 1800));
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+      // widget is disposed after this — do not setState in finally
+    } on FirebaseAuthException catch (e) {
+      if (mounted) _showError(AuthService.friendlyError(e));
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) _showError('Google sign-in failed. Please try again.');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _appleSignIn() async {
+    setState(() => _loading = true);
+    try {
+      final result = await AuthService.signInWithApple();
+      if (!mounted) return;
+      final email = result.user?.email ?? '';
+      if (email.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Signed in as $email'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(milliseconds: 1800),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 1800));
+        if (!mounted) return;
+      }
+      Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) _showError(AuthService.friendlyError(e));
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) _showError('Apple sign-in failed. Please try again.');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _showForgotDialog() async {
+    final ctrl = TextEditingController(text: _loginEmail.text.trim());
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _ForgotDialog(emailController: ctrl),
+    );
+    ctrl.dispose();
   }
 
   @override
@@ -104,10 +255,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
               const SizedBox(height: 32),
               // Toggle pill
-              _TogglePill(
-                isLogin: _isLogin,
-                onToggle: _toggle,
-              ),
+              _TogglePill(isLogin: _isLogin, onToggle: _toggle),
               const SizedBox(height: 32),
               // Form
               AnimatedSwitcher(
@@ -121,7 +269,7 @@ class _AuthScreenState extends State<AuthScreen>
                         showPass: _loginPassVisible,
                         onTogglePass: () => setState(
                             () => _loginPassVisible = !_loginPassVisible),
-                        onForgot: () {},
+                        onForgot: _showForgotDialog,
                       )
                     : _RegisterForm(
                         key: const ValueKey('register'),
@@ -167,20 +315,22 @@ class _AuthScreenState extends State<AuthScreen>
                 ],
               ),
               const SizedBox(height: 20),
-              // Social buttons
+              // Google — shown on all mobile platforms
               _SocialButton(
-                icon: Icons.g_mobiledata_rounded,
+                assetLogo: _SocialLogo.google,
                 label: 'Continue with Google',
-                onTap: () {},
+                onTap: _loading ? null : _googleSignIn,
               ),
-              const SizedBox(height: 12),
-              _SocialButton(
-                icon: Icons.apple_rounded,
-                label: 'Continue with Apple',
-                onTap: () {},
-              ),
+              // Apple — iOS only
+              if (Platform.isIOS) ...[
+                const SizedBox(height: 12),
+                _SocialButton(
+                  assetLogo: _SocialLogo.apple,
+                  label: 'Continue with Apple',
+                  onTap: _loading ? null : _appleSignIn,
+                ),
+              ],
               const SizedBox(height: 24),
-              // Terms
               Text(
                 'By signing up you agree to our Terms and Privacy Policy',
                 style: AppTextStyles.caption.copyWith(fontSize: 11),
@@ -194,6 +344,101 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 }
+
+// ─── Forgot password dialog ───────────────────────────────────────────────────
+
+class _ForgotDialog extends StatefulWidget {
+  final TextEditingController emailController;
+  const _ForgotDialog({required this.emailController});
+
+  @override
+  State<_ForgotDialog> createState() => _ForgotDialogState();
+}
+
+class _ForgotDialogState extends State<_ForgotDialog> {
+  bool _loading = false;
+  bool _sent = false;
+  String? _error;
+
+  Future<void> _send() async {
+    final email = widget.emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Please enter your email address.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await AuthService.sendPasswordReset(email);
+      if (mounted) setState(() => _sent = true);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _error = AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reset Password'),
+      content: _sent
+          ? Text(
+              'A reset link has been sent to ${widget.emailController.text.trim()}.\n\nCheck your inbox and follow the link.',
+              style: AppTextStyles.body,
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Enter your email and we'll send a reset link.",
+                  style: AppTextStyles.body,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: widget.emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Email address',
+                    prefixIcon: Icon(Icons.email_outlined, size: 20),
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: const TextStyle(
+                        color: AppColors.danger, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(_sent ? 'Done' : 'Cancel'),
+        ),
+        if (!_sent)
+          TextButton(
+            onPressed: _loading ? null : _send,
+            child: _loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Send'),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Toggle pill ─────────────────────────────────────────────────────────────
 
 class _TogglePill extends StatelessWidget {
   final bool isLogin;
@@ -213,7 +458,8 @@ class _TogglePill extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: _PillTab('Login', isLogin, () => onToggle(true))),
-          Expanded(child: _PillTab('Register', !isLogin, () => onToggle(false))),
+          Expanded(
+              child: _PillTab('Register', !isLogin, () => onToggle(false))),
         ],
       ),
     );
@@ -260,6 +506,8 @@ class _PillTab extends StatelessWidget {
   }
 }
 
+// ─── Login form ───────────────────────────────────────────────────────────────
+
 class _LoginForm extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController email;
@@ -293,8 +541,9 @@ class _LoginForm extends StatelessWidget {
             ),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Email is required';
-              final re = RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,}$');
-              if (!re.hasMatch(v)) return 'Enter a valid email';
+              if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(v)) {
+                return 'Enter a valid email';
+              }
               return null;
             },
           ),
@@ -304,21 +553,24 @@ class _LoginForm extends StatelessWidget {
             obscureText: !showPass,
             decoration: InputDecoration(
               hintText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+              prefixIcon:
+                  const Icon(Icons.lock_outline_rounded, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
-                  showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  showPass
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                   size: 20,
                 ),
                 onPressed: onTogglePass,
               ),
             ),
             validator: (v) {
-              if (v == null || v.length < 8) return 'Password must be 8+ characters';
+              if (v == null || v.isEmpty) return 'Password is required';
               return null;
             },
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -338,7 +590,9 @@ class _LoginForm extends StatelessWidget {
   }
 }
 
-class _RegisterForm extends StatelessWidget {
+// ─── Register form (StatefulWidget for password strength) ────────────────────
+
+class _RegisterForm extends StatefulWidget {
   final GlobalKey<FormState> formKey;
   final TextEditingController name;
   final TextEditingController email;
@@ -363,23 +617,48 @@ class _RegisterForm extends StatelessWidget {
   });
 
   @override
+  State<_RegisterForm> createState() => _RegisterFormState();
+}
+
+class _RegisterFormState extends State<_RegisterForm> {
+  int _strength = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.password.addListener(_onPasswordChanged);
+  }
+
+  void _onPasswordChanged() {
+    if (!mounted) return;
+    setState(() => _strength = _calcStrength(widget.password.text));
+  }
+
+  @override
+  void dispose() {
+    widget.password.removeListener(_onPasswordChanged);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Form(
-      key: formKey,
+      key: widget.formKey,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextFormField(
-            controller: name,
+            controller: widget.name,
             decoration: const InputDecoration(
               hintText: 'Full name',
               prefixIcon: Icon(Icons.person_outline_rounded, size: 20),
             ),
             validator: (v) =>
-                (v == null || v.isEmpty) ? 'Name is required' : null,
+                (v == null || v.trim().isEmpty) ? 'Name is required' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
-            controller: email,
+            controller: widget.email,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
               hintText: 'Email address',
@@ -387,48 +666,62 @@ class _RegisterForm extends StatelessWidget {
             ),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Email is required';
-              final re = RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,}$');
-              if (!re.hasMatch(v)) return 'Enter a valid email';
+              if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(v)) {
+                return 'Enter a valid email';
+              }
               return null;
             },
           ),
           const SizedBox(height: 12),
           TextFormField(
-            controller: password,
-            obscureText: !showPass,
+            controller: widget.password,
+            obscureText: !widget.showPass,
             decoration: InputDecoration(
               hintText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+              prefixIcon:
+                  const Icon(Icons.lock_outline_rounded, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
-                  showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  widget.showPass
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                   size: 20,
                 ),
-                onPressed: onTogglePass,
+                onPressed: widget.onTogglePass,
               ),
             ),
             validator: (v) {
-              if (v == null || v.length < 8) return 'Password must be 8+ characters';
+              if (v == null || v.length < 8) {
+                return 'Password must be at least 8 characters';
+              }
               return null;
             },
           ),
+          // Password strength bar — only shown when user has typed something
+          if (_strength > 0) ...[
+            const SizedBox(height: 8),
+            _PasswordStrengthBar(strength: _strength),
+          ],
           const SizedBox(height: 12),
           TextFormField(
-            controller: confirm,
-            obscureText: !showConfirm,
+            controller: widget.confirm,
+            obscureText: !widget.showConfirm,
             decoration: InputDecoration(
               hintText: 'Confirm password',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+              prefixIcon:
+                  const Icon(Icons.lock_outline_rounded, size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
-                  showConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  widget.showConfirm
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                   size: 20,
                 ),
-                onPressed: onToggleConfirm,
+                onPressed: widget.onToggleConfirm,
               ),
             ),
             validator: (v) {
-              if (v != password.text) return 'Passwords do not match';
+              if (v != widget.password.text) return 'Passwords do not match';
               return null;
             },
           ),
@@ -438,13 +731,62 @@ class _RegisterForm extends StatelessWidget {
   }
 }
 
+// ─── Password strength bar ────────────────────────────────────────────────────
+
+class _PasswordStrengthBar extends StatelessWidget {
+  final int strength; // 1–5
+
+  const _PasswordStrengthBar({required this.strength});
+
+  @override
+  Widget build(BuildContext context) {
+    // Map score 1-5 → 1-4 filled bars
+    final filledBars = (strength / 5 * 4).ceil().clamp(1, 4);
+    final color = _strengthColor(strength);
+    final label = _strengthLabel(strength);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: List.generate(4, (i) {
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: i < 3 ? 4 : 0),
+                height: 4,
+                decoration: BoxDecoration(
+                  color: i < filledBars ? color : AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Social button ────────────────────────────────────────────────────────────
+
+enum _SocialLogo { google, apple }
+
 class _SocialButton extends StatelessWidget {
-  final IconData icon;
+  final _SocialLogo assetLogo;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _SocialButton({
-    required this.icon,
+    required this.assetLogo,
     required this.label,
     required this.onTap,
   });
@@ -461,10 +803,35 @@ class _SocialButton extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 22, color: AppColors.primary),
+          if (assetLogo == _SocialLogo.google)
+            _GoogleG()
+          else
+            const Icon(Icons.apple_rounded, size: 22,
+                color: AppColors.textPrimary),
           const SizedBox(width: 10),
           Text(label, style: AppTextStyles.body),
         ],
+      ),
+    );
+  }
+}
+
+// Draws the Google "G" lettermark using coloured text (no asset needed)
+class _GoogleG extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 22,
+      height: 22,
+      child: Center(
+        child: Text(
+          'G',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF4285F4),
+          ),
+        ),
       ),
     );
   }
