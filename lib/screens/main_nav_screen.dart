@@ -19,12 +19,20 @@ class MainNavScreen extends StatefulWidget {
 class _MainNavScreenState extends State<MainNavScreen> {
   int _activeIndex = 0;
 
-  static const _screens = [
-    DashboardScreen(),
-    VitalsScreen(),
-    HistoryScreen(),
-    ProfileScreen(),
-  ];
+  void _switchTab(int index) => setState(() => _activeIndex = index);
+
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      DashboardScreen(onSwitchTab: _switchTab),
+      const VitalsScreen(),
+      const HistoryScreen(),
+      const ProfileScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {

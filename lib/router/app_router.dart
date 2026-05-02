@@ -12,6 +12,9 @@ import '../screens/chatbot/chatbot_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/settings/attendant_screen.dart';
+import '../screens/settings/emergency_contacts_screen.dart';
+import '../screens/settings/notification_preferences_screen.dart';
+import '../screens/settings/help_support_screen.dart';
 import '../screens/report/health_report_screen.dart';
 
 class AppRouter {
@@ -39,6 +42,9 @@ class AppRouter {
   static const String notifications = '/notifications';
   static const String settings = '/settings';
   static const String settingsAttendants = '/settings/attendants';
+  static const String emergencyContacts = '/settings/emergency-contacts';
+  static const String notificationPrefs = '/settings/notification-prefs';
+  static const String helpSupport = '/settings/help';
   static const String weeklyReport = '/report/weekly';
 
   // ── Static route map (no path parameters) ─────────────────────────────────
@@ -57,6 +63,9 @@ class AppRouter {
         notifications: (_) => const NotificationsScreen(),
         settings: (_) => const SettingsScreen(),
         settingsAttendants: (_) => const AttendantScreen(),
+        emergencyContacts: (_) => const EmergencyContactsScreen(),
+        notificationPrefs: (_) => const NotificationPreferencesScreen(),
+        helpSupport: (_) => const HelpSupportScreen(),
         weeklyReport: (_) => const HealthReportScreen(),
       };
 
