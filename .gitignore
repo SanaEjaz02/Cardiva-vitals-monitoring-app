@@ -48,5 +48,9 @@ app.*.map.json
 android/local.properties
 android/.gradle/
 
+# Firebase config — contains API keys, share privately with teammates
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
 # Claude Code assistant memory (machine-specific)
 .claude/

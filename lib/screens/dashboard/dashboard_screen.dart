@@ -5,9 +5,12 @@ import '../../widgets/atoms/vital_card_atom.dart';
 import '../../widgets/atoms/skeleton_loader.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
+import '../../services/auth_service.dart';
+import '../emergency/emergency_popup.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final ValueChanged<int>? onSwitchTab;
+  const DashboardScreen({super.key, this.onSwitchTab});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -37,6 +40,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.dispose();
   }
 
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning,';
+    if (hour < 17) return 'Good afternoon,';
+    return 'Good evening,';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,24 +66,36 @@ class _DashboardScreenState extends State<DashboardScreen>
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       const SizedBox(height: 8),
-                      _TopBar(pulseController: _pulseController),
+                      _TopBar(
+                        greeting: _greeting,
+                        pulseController: _pulseController,
+                        onProfileTap: () => widget.onSwitchTab?.call(3),
+                      ),
                       const SizedBox(height: 20),
                       const _HeroCard(),
+                      const SizedBox(height: 16),
+                      _QuickActions(onEmergencyTap: () =>
+                          EmergencyPopup.show(context, 'manual')),
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Live Vitals', style: AppTextStyles.h2),
                           TextButton(
-                            onPressed: () {},
-                            child: Text('See all →',
-                                style: AppTextStyles.caption.copyWith(
-                                    color: AppColors.primary)),
+                            onPressed: () => widget.onSwitchTab?.call(1),
+                            child: Text(
+                              'See all →',
+                              style: AppTextStyles.caption.copyWith(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       _loading ? const _SkeletonGrid() : const _VitalGrid(),
+                      const SizedBox(height: 20),
+                      const _DailyInsightCard(),
                       const SizedBox(height: 100),
                     ]),
                   ),
@@ -87,12 +109,25 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
+// ── Top bar ────────────────────────────────────────────────────────────────
+
 class _TopBar extends StatelessWidget {
+  final String greeting;
   final AnimationController pulseController;
-  const _TopBar({required this.pulseController});
+  final VoidCallback? onProfileTap;
+
+  const _TopBar({
+    required this.greeting,
+    required this.pulseController,
+    this.onProfileTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final user = AuthService.currentUser;
+    final firstName = user?.displayName?.split(' ').first ?? 'Patient';
+    final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'P';
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -100,8 +135,8 @@ class _TopBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Good morning,', style: AppTextStyles.caption),
-              Text('Sarah', style: AppTextStyles.h1),
+              Text(greeting, style: AppTextStyles.caption),
+              Text(firstName, style: AppTextStyles.h1),
             ],
           ),
         ),
@@ -128,16 +163,23 @@ class _TopBar extends StatelessWidget {
           ],
         ),
         const SizedBox(width: 4),
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: AppColors.primaryBg,
-          child: Text('S',
-              style: AppTextStyles.h2.copyWith(color: AppColors.primary)),
+        GestureDetector(
+          onTap: onProfileTap,
+          child: CircleAvatar(
+            radius: 20,
+            backgroundColor: AppColors.primaryDeep,
+            child: Text(
+              initial,
+              style: AppTextStyles.h2White().copyWith(fontSize: 16),
+            ),
+          ),
         ),
       ],
     );
   }
 }
+
+// ── Hero card ──────────────────────────────────────────────────────────────
 
 class _HeroCard extends StatelessWidget {
   const _HeroCard();
@@ -146,77 +188,270 @@ class _HeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: AppColors.heroCard,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF5BB8D4),
+            Color(0xFF3A8AAD),
+            Color(0xFF2A5A7A),
+          ],
+          stops: [0.0, 0.5, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
           BoxShadow(
-            color: AppColors.shadowLg,
-            blurRadius: 28,
-            offset: Offset(0, 8),
+            color: const Color(0xFF3A6C8A).withOpacity(0.40),
+            blurRadius: 36,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Overall Health',
-            style: AppTextStyles.caption.copyWith(
-              color: Colors.white.withOpacity(0.7),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            // Decorative background circles
+            Positioned(
+              top: -40,
+              right: -30,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.07),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text('Excellent', style: AppTextStyles.h1White()),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.favorite_rounded,
-                  color: Colors.white, size: 18),
-              const SizedBox(width: 6),
-              Text('94 / 100',
-                  style: AppTextStyles.h2White().copyWith(fontSize: 20)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _WhitePill('Confidence: 89%', outline: true),
-              const SizedBox(width: 8),
-              _WhitePill('Walking', outline: false),
-            ],
-          ),
-        ],
+            Positioned(
+              bottom: -30,
+              right: 50,
+              child: Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.09),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 20,
+              right: 110,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.06),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(22),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left: text content
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.favorite_rounded,
+                                color: Colors.white, size: 13),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Your Health Score',
+                              style: AppTextStyles.captionWhite()
+                                  .copyWith(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Excellent',
+                          style: AppTextStyles.h1White().copyWith(fontSize: 28),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'All vitals are in a healthy range',
+                          style: AppTextStyles.captionWhite().copyWith(
+                            color: Colors.white.withOpacity(0.75),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _HeroPill('Accuracy: High', solid: true),
+                            _HeroPill('Walking Active', solid: false),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  // Right: score ring
+                  SizedBox(
+                    width: 82,
+                    height: 82,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CircularProgressIndicator(
+                          value: 0.94,
+                          strokeWidth: 7,
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                          valueColor:
+                              const AlwaysStoppedAnimation(Colors.white),
+                          strokeCap: StrokeCap.round,
+                        ),
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '94',
+                                style: AppTextStyles.h1White().copyWith(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                '/100',
+                                style: AppTextStyles.captionWhite()
+                                    .copyWith(fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _WhitePill extends StatelessWidget {
+class _HeroPill extends StatelessWidget {
   final String label;
-  final bool outline;
-  const _WhitePill(this.label, {required this.outline});
+  final bool solid;
+  const _HeroPill(this.label, {required this.solid});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
-        color: outline ? Colors.transparent : Colors.white.withOpacity(0.2),
+        color: solid ? Colors.white.withOpacity(0.22) : Colors.transparent,
         borderRadius: BorderRadius.circular(999),
-        border: outline
-            ? Border.all(color: Colors.white.withOpacity(0.6))
-            : null,
+        border: Border.all(
+          color: Colors.white.withOpacity(solid ? 0 : 0.55),
+        ),
       ),
       child: Text(
         label,
-        style: AppTextStyles.captionWhite()
-            .copyWith(fontWeight: FontWeight.w500),
+        style: AppTextStyles.captionWhite().copyWith(
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
+        ),
       ),
     );
   }
 }
+
+// ── Quick actions ──────────────────────────────────────────────────────────
+
+class _QuickActions extends StatelessWidget {
+  final VoidCallback onEmergencyTap;
+  const _QuickActions({required this.onEmergencyTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _ActionTile(
+          icon: Icons.assessment_outlined,
+          label: 'Report',
+          color: AppColors.primary,
+          onTap: () => Navigator.pushNamed(context, AppRouter.weeklyReport),
+        ),
+        const SizedBox(width: 12),
+        _ActionTile(
+          icon: Icons.smart_toy_outlined,
+          label: 'Ask AI',
+          color: const Color(0xFF7B5EA7),
+          onTap: () => Navigator.pushNamed(context, AppRouter.chat),
+        ),
+        const SizedBox(width: 12),
+        _ActionTile(
+          icon: Icons.emergency_outlined,
+          label: 'SOS',
+          color: AppColors.danger,
+          onTap: onEmergencyTap,
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                style: AppTextStyles.caption.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Skeleton grid ──────────────────────────────────────────────────────────
 
 class _SkeletonGrid extends StatelessWidget {
   const _SkeletonGrid();
@@ -238,6 +473,8 @@ class _SkeletonGrid extends StatelessWidget {
     );
   }
 }
+
+// ── Vital grid ────────────────────────────────────────────────────────────
 
 class _VitalGrid extends StatelessWidget {
   const _VitalGrid();
@@ -351,6 +588,57 @@ class _VitalGrid extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Daily insight card ────────────────────────────────────────────────────
+
+class _DailyInsightCard extends StatelessWidget {
+  const _DailyInsightCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.successBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.success.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.tips_and_updates_outlined,
+                color: AppColors.success, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Daily Insight',
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Your heart rate has been stable for 6 hours. Great job staying active!',
+                  style: AppTextStyles.body,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

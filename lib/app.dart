@@ -17,6 +17,7 @@ class CardivApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
+      themeAnimationDuration: Duration.zero,
       initialRoute: AppRouter.splash,
       routes: AppRouter.routes,
       onGenerateRoute: AppRouter.generateRoute,
