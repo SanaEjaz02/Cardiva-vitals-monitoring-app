@@ -1,17 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../router/app_router.dart';
+import '../../providers/settings_provider.dart';
 import '../emergency/emergency_popup.dart';
 
-class SettingsScreen extends StatefulWidget {
+// ── Theme mode helpers ─────────────────────────────────────────────────────
+int _themeModeToIndex(ThemeMode m) {
+  if (m == ThemeMode.light) return 1;
+  if (m == ThemeMode.dark) return 2;
+  return 0; // system
+}
+
+ThemeMode _indexToThemeMode(int i) {
+  if (i == 1) return ThemeMode.light;
+  if (i == 2) return ThemeMode.dark;
+  return ThemeMode.system;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _hrMin = 55;
   double _hrMax = 100;
   double _spo2Min = 94;
@@ -20,12 +37,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _encryptLocal = true;
   bool _cloudSync = true;
   bool _shareAnonymous = false;
-  int _theme = 0; // 0=System, 1=Light, 2=Dark
   int _units = 0; // 0=Metric, 1=Imperial
   bool _haptics = true;
 
   @override
   Widget build(BuildContext context) {
+    final themeIdx =
+        _themeModeToIndex(ref.watch(settingsProvider).themeMode);
+
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       appBar: AppBar(
@@ -43,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             // Section 1 — Alerts & Thresholds
             _SectionHeader('Alerts & Thresholds'),
-            _SettingsCard(children: [
+            _SettingsCard(key: const ValueKey('card-alerts'), children: [
               _SliderRow(
                 label: 'Heart Rate Range',
                 subtitle: '${_hrMin.toInt()}–${_hrMax.toInt()} bpm',
@@ -53,11 +72,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   max: 180,
                   divisions: 140,
                   activeColor: AppColors.primary,
-                  onChanged: (v) =>
-                      setState(() {
-                        _hrMin = v.start;
-                        _hrMax = v.end;
-                      }),
+                  onChanged: (v) => setState(() {
+                    _hrMin = v.start;
+                    _hrMax = v.end;
+                  }),
                 ),
               ),
               const Divider(height: 1, color: AppColors.divider),
@@ -75,7 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const Divider(height: 1, color: AppColors.divider),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -93,6 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const Divider(height: 1, color: AppColors.divider),
               _ToggleRow(
+                key: const ValueKey('toggle-autocall'),
                 label: 'Auto-call 1122 (ETA > 20 min)',
                 subtitle: 'Call emergency services automatically',
                 value: _auto1122,
@@ -102,10 +122,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             // Section 2 — Attendants
             _SectionHeader('Attendants'),
-            _SettingsCard(children: [
+            _SettingsCard(key: const ValueKey('card-attendants'), children: [
               ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 4),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 title: Text('Manage Attendants', style: AppTextStyles.body),
                 subtitle: Text(
                   'Attendants are notified during emergencies.',
@@ -120,20 +140,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             // Section 3 — Privacy & Data
             _SectionHeader('Privacy & Data'),
-            _SettingsCard(children: [
+            _SettingsCard(key: const ValueKey('card-privacy'), children: [
               _ToggleRow(
+                key: const ValueKey('toggle-encrypt'),
                 label: 'Encrypt local data',
                 value: _encryptLocal,
                 onChanged: (v) => setState(() => _encryptLocal = v),
               ),
               const Divider(height: 1, color: AppColors.divider),
               _ToggleRow(
+                key: const ValueKey('toggle-cloudsync'),
                 label: 'Cloud sync',
                 value: _cloudSync,
                 onChanged: (v) => setState(() => _cloudSync = v),
               ),
               const Divider(height: 1, color: AppColors.divider),
               _ToggleRow(
+                key: const ValueKey('toggle-share'),
                 label: 'Share anonymized data for research',
                 value: _shareAnonymous,
                 onChanged: (v) => setState(() => _shareAnonymous = v),
@@ -155,18 +178,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             // Section 4 — App Preferences
             _SectionHeader('App Preferences'),
-            _SettingsCard(children: [
+            _SettingsCard(key: const ValueKey('card-prefs'), children: [
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Theme', style: AppTextStyles.body),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Changes take effect immediately across the entire app.',
+                      style: AppTextStyles.caption,
+                    ),
+                    const SizedBox(height: 10),
                     _SegmentedControl(
                       options: const ['System', 'Light', 'Dark'],
-                      selected: _theme,
-                      onSelect: (i) => setState(() => _theme = i),
+                      selected: themeIdx,
+                      onSelect: (i) => ref
+                          .read(settingsProvider.notifier)
+                          .setThemeMode(_indexToThemeMode(i)),
                     ),
                   ],
                 ),
@@ -189,6 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const Divider(height: 1, color: AppColors.divider),
               _ToggleRow(
+                key: const ValueKey('toggle-haptics'),
                 label: 'Haptics',
                 value: _haptics,
                 onChanged: (v) => setState(() => _haptics = v),
@@ -197,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             // Developer section — demo emergency flow
             _SectionHeader('Developer'),
-            _SettingsCard(children: [
+            _SettingsCard(key: const ValueKey('card-dev'), children: [
               ListTile(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -211,8 +242,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: const Icon(Icons.play_arrow_rounded,
                       color: AppColors.danger, size: 20),
                 ),
-                title: Text('Run Demo Emergency',
-                    style: AppTextStyles.body),
+                title:
+                    Text('Run Demo Emergency', style: AppTextStyles.body),
                 subtitle: Text(
                   'Walks through popup → alert sent with mocked data',
                   style: AppTextStyles.caption,
@@ -249,13 +280,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('Delete',
-                style: AppTextStyles.body.copyWith(color: AppColors.danger)),
+                style:
+                    AppTextStyles.body.copyWith(color: AppColors.danger)),
           ),
         ],
       ),
     );
   }
 }
+
+// ── Shared sub-widgets ─────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -274,7 +308,7 @@ class _SectionHeader extends StatelessWidget {
 
 class _SettingsCard extends StatelessWidget {
   final List<Widget> children;
-  const _SettingsCard({required this.children});
+  const _SettingsCard({super.key, required this.children});
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +318,9 @@ class _SettingsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadowSm, blurRadius: 12, offset: Offset(0, 2)),
+              color: AppColors.shadowSm,
+              blurRadius: 12,
+              offset: Offset(0, 2)),
         ],
       ),
       child: Column(children: children),
@@ -299,6 +335,7 @@ class _ToggleRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   const _ToggleRow({
+    super.key,
     required this.label,
     this.subtitle,
     required this.value,
@@ -307,7 +344,7 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile.adaptive(
+    return SwitchListTile(
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
       title: Text(label, style: AppTextStyles.body),
@@ -388,7 +425,8 @@ class _SegmentedControl extends StatelessWidget {
                 child: Text(
                   e.value,
                   style: AppTextStyles.caption.copyWith(
-                    color: active ? Colors.white : AppColors.textSecondary,
+                    color:
+                        active ? Colors.white : AppColors.textSecondary,
                     fontWeight:
                         active ? FontWeight.w600 : FontWeight.w400,
                   ),

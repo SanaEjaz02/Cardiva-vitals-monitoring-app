@@ -50,6 +50,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       );
 
+  void setThemeMode(ThemeMode mode) => state = state.copyWith(themeMode: mode);
+
   void setEmergencyAlerts(bool v) =>
       state = state.copyWith(emergencyAlertsEnabled: v);
 

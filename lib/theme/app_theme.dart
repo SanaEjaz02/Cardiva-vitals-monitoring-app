@@ -8,6 +8,7 @@ class AppTheme {
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
+      fontFamily: GoogleFonts.inter().fontFamily,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
@@ -20,10 +21,10 @@ class AppTheme {
         error: AppColors.danger,
       ),
       scaffoldBackgroundColor: AppColors.bgLight,
-      textTheme: GoogleFonts.interTextTheme().copyWith(
-        bodyLarge: GoogleFonts.inter(color: AppColors.textPrimary),
-        bodyMedium: GoogleFonts.inter(color: AppColors.textPrimary),
-        bodySmall: GoogleFonts.inter(color: AppColors.textSecondary),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: AppColors.textPrimary),
+        bodyMedium: TextStyle(color: AppColors.textPrimary),
+        bodySmall: TextStyle(color: AppColors.textSecondary),
       ),
     );
 
@@ -144,6 +145,7 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: GoogleFonts.inter().fontFamily,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
@@ -156,10 +158,10 @@ class AppTheme {
         error: AppColors.danger,
       ),
       scaffoldBackgroundColor: darkScaffold,
-      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
-        bodyLarge: GoogleFonts.inter(color: darkText),
-        bodyMedium: GoogleFonts.inter(color: darkText),
-        bodySmall: GoogleFonts.inter(color: darkTextMuted),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: darkText),
+        bodyMedium: TextStyle(color: darkText),
+        bodySmall: TextStyle(color: darkTextMuted),
       ),
       cardTheme: const CardThemeData(
         color: darkCard,
