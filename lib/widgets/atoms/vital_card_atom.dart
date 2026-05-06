@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import 'ring_widget.dart';
 
 class VitalCardAtom extends StatelessWidget {
   final String name;
@@ -10,6 +10,10 @@ class VitalCardAtom extends StatelessWidget {
   final double percent;
   final VitalDisplayStatus status;
   final VoidCallback? onTap;
+  final String lottiePath;
+  final IconData icon;
+  // When provided this widget is rendered instead of the Lottie asset.
+  final Widget? customAnimation;
 
   const VitalCardAtom({
     super.key,
@@ -18,7 +22,10 @@ class VitalCardAtom extends StatelessWidget {
     required this.unit,
     required this.percent,
     required this.status,
+    required this.lottiePath,
+    required this.icon,
     this.onTap,
+    this.customAnimation,
   });
 
   @override
@@ -60,35 +67,55 @@ class VitalCardAtom extends StatelessWidget {
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                RingWidget(
-                  percent: percent,
-                  color: color,
-                  size: 56,
-                  strokeWidth: 5,
-                ),
-                const SizedBox(height: 6),
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      TextSpan(
-                        text: value,
-                        style: AppTextStyles.h2.copyWith(
-                          color: AppColors.textPrimary,
-                          fontSize: 18,
+                // Animation: custom widget if provided, else Lottie
+                SizedBox(
+                  width: 54,
+                  height: 54,
+                  child: customAnimation ??
+                      Lottie.asset(
+                        lottiePath,
+                        fit: BoxFit.contain,
+                        repeat: true,
+                        errorBuilder: (_, __, ___) => Icon(
+                          icon,
+                          color: color,
+                          size: 36,
                         ),
                       ),
-                      TextSpan(
-                        text: ' $unit',
-                        style: AppTextStyles.caption,
+                ),
+                const SizedBox(height: 4),
+                // Icon + value + unit row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, color: color, size: 11),
+                    const SizedBox(width: 3),
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: value,
+                            style: AppTextStyles.h2.copyWith(
+                              color: AppColors.textPrimary,
+                              fontSize: 18,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' $unit',
+                            style: AppTextStyles.caption,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   name,
                   style: AppTextStyles.caption,
                   textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
