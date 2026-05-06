@@ -137,11 +137,11 @@ class AppTheme {
   }
 
   static ThemeData get dark {
-    const darkScaffold = Color(0xFF0D1B2A);
-    const darkCard = Color(0xFF152336);
-    const darkSurface = Color(0xFF1A2D42);
-    const darkText = Color(0xFFE0EEFF);
-    const darkTextMuted = Color(0xFF8AAECE);
+    const darkScaffold = Color(0xFF03045E);
+    const darkCard = Color(0xFF023E8A);
+    const darkSurface = Color(0xFF0077B6);
+    const darkText = Color(0xFFCAF0F8);
+    const darkTextMuted = Color(0xFF90E0EF);
 
     return ThemeData(
       useMaterial3: true,
@@ -212,7 +212,7 @@ class AppTheme {
         contentTextStyle: GoogleFonts.inter(fontSize: 13, color: darkText),
       ),
       dividerTheme: const DividerThemeData(
-        color: Color(0xFF1E3347),
+        color: Color(0xFF0096C7),
         thickness: 1,
         space: 0,
       ),

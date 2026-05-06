@@ -43,15 +43,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
         children: _screens,
       ),
       floatingActionButton: _activeIndex <= 1
-          ? Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 76,
-              ),
-              child: GestureDetector(
-                onLongPress: () => EmergencyPopup.show(context, 'manual'),
-                child: CardivaFab(
-                  onTap: () => Navigator.pushNamed(context, AppRouter.chat),
-                ),
+          ? GestureDetector(
+              onLongPress: () => EmergencyPopup.show(context, 'manual'),
+              child: CardivaFab(
+                onTap: () => Navigator.pushNamed(context, AppRouter.chat),
               ),
             )
           : null,

@@ -54,3 +54,7 @@ ios/Runner/GoogleService-Info.plist
 
 # Claude Code assistant memory (machine-specific)
 .claude/
+
+# Environment variables — contains API keys, never commit
+.env
+.env.*
