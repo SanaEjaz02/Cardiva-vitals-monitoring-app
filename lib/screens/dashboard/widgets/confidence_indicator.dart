@@ -58,7 +58,7 @@ class ConfidenceIndicator extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Confidence Score',
                     style: TextStyle(
                       fontSize: 12,
@@ -78,7 +78,7 @@ class ConfidenceIndicator extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     _interpretFor(score),
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
                       color: AppColors.textHint,
                     ),

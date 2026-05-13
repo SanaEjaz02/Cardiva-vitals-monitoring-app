@@ -10,8 +10,10 @@ final _demoUser = UserProfile(
   email: 'demo@cardiva.app',
   phone: '+1234567890',
   dateOfBirth: DateTime(1990, 6, 15),
-  gender: 'Not specified',
+  gender: 'Male',
   bloodGroup: 'A+',
+  heightCm: 170.0,
+  weightKg: 70.0,
 );
 
 // ── User profile notifier ────────────────────────────────────────────────────

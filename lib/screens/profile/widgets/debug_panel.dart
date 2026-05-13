@@ -24,11 +24,11 @@ class DebugPanel extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
-                const Icon(Icons.bug_report_rounded,
+                Icon(Icons.bug_report_rounded,
                     color: Color(0xFFF9A825), size: 20),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   'Developer Debug Panel',
                   style: TextStyle(
@@ -40,7 +40,7 @@ class DebugPanel extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               'Manually inject vital readings to test UI flows.',
               style: TextStyle(
                   fontSize: 11, color: AppColors.textSecondary),
@@ -97,7 +97,7 @@ class DebugPanel extends ConsumerWidget {
   void _snack(BuildContext ctx, String msg) {
     ScaffoldMessenger.of(ctx).showSnackBar(
       SnackBar(
-        content: Text(msg, style: TextStyle(fontSize: 13)),
+        content: Text(msg, style: const TextStyle(fontSize: 13)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -130,10 +130,10 @@ class _DebugButton extends StatelessWidget {
             fontSize: 12, color: color, fontWeight: FontWeight.w600),
       ),
       style: OutlinedButton.styleFrom(
-        side: BorderSide(color: color.withOpacity(0.5)),
+        side: BorderSide(color: color.withValues(alpha: 0.5)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        backgroundColor: color.withOpacity(0.08),
+        backgroundColor: color.withValues(alpha: 0.08),
       ),
     );
   }

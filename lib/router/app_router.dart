@@ -7,6 +7,7 @@ import '../screens/setup/device_pair_screen.dart';
 import '../screens/setup/emergency_contact_setup_screen.dart';
 import '../screens/main_nav_screen.dart';
 import '../screens/vitals/vital_detail_screen.dart';
+import '../screens/vitals/vitals_ai_screen.dart';
 import '../screens/emergency/alert_sent_screen.dart';
 import '../screens/chatbot/chatbot_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
@@ -37,6 +38,7 @@ class AppRouter {
 
   static const String dashboard = '/dashboard';
   static const String vitalsDetail = '/vitals'; // use as prefix: /vitals/:id
+  static const String vitalsAi = '/vitals/ai';
   static const String alertSent = '/emergency/sent';
   static const String chat = '/chat';
   static const String notifications = '/notifications';
@@ -61,6 +63,7 @@ class AppRouter {
         alertSent: (_) => const AlertSentScreen(),
         chat: (_) => const ChatbotScreen(),
         notifications: (_) => const NotificationsScreen(),
+        vitalsAi: (_) => const VitalsAiScreen(),
         settings: (_) => const SettingsScreen(),
         settingsAttendants: (_) => const AttendantScreen(),
         emergencyContacts: (_) => const EmergencyContactsScreen(),

@@ -121,7 +121,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: relationship,
+                  initialValue: relationship,
                   decoration: const InputDecoration(
                     labelText: 'Relationship',
                   ),

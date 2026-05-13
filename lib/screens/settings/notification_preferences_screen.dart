@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_colors.dart';
@@ -41,7 +41,7 @@ class _NotificationPreferencesScreenState
             const SizedBox(height: 8),
 
             // ── Critical alerts ────────────────────────────────────────
-            _SectionHeader('Critical Alerts'),
+            const _SectionHeader('Critical Alerts'),
             _Card(children: [
               _ToggleRow(
                 icon: Icons.warning_rounded,
@@ -66,7 +66,7 @@ class _NotificationPreferencesScreenState
             const SizedBox(height: 16),
 
             // ── Health updates ─────────────────────────────────────────
-            _SectionHeader('Health Updates'),
+            const _SectionHeader('Health Updates'),
             _Card(children: [
               _ToggleRow(
                 icon: Icons.monitor_heart_outlined,
@@ -90,7 +90,7 @@ class _NotificationPreferencesScreenState
             const SizedBox(height: 16),
 
             // ── Sound & haptics ────────────────────────────────────────
-            _SectionHeader('Sound & Haptics'),
+            const _SectionHeader('Sound & Haptics'),
             _Card(children: [
               _ToggleRow(
                 icon: Icons.volume_up_outlined,
@@ -120,7 +120,7 @@ class _NotificationPreferencesScreenState
                 color: AppColors.primaryBg,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: AppColors.primary.withOpacity(0.2)),
+                    color: AppColors.primary.withValues(alpha: 0.2)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +222,7 @@ class _ToggleRow extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.10),
+              color: iconColor.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: iconColor, size: 18),

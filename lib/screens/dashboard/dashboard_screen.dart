@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/skeleton_loader.dart';
@@ -53,18 +53,18 @@ class _DashboardScreenState extends State<DashboardScreen>
       body: Stack(
         children: [
           // Light body background
-          Positioned.fill(
+          const Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFFE2F4FC),
-                    const Color(0xFFF0FAFF),
+                    Color(0xFFE2F4FC),
+                    Color(0xFFF0FAFF),
                     Colors.white,
                   ],
-                  stops: const [0.0, 0.45, 1.0],
+                  stops: [0.0, 0.45, 1.0],
                 ),
               ),
             ),
@@ -173,7 +173,7 @@ class _HeaderBlobPainter extends CustomPainter {
       center,
       radius,
       Paint()
-        ..color = color.withOpacity(opacity)
+        ..color = color.withValues(alpha: opacity)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
     );
   }
@@ -206,7 +206,7 @@ class _SectionHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(2),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0077B6).withOpacity(0.4),
+                color: const Color(0xFF0077B6).withValues(alpha: 0.4),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -230,10 +230,10 @@ class _SectionHeader extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF0077B6).withOpacity(0.08),
+              color: const Color(0xFF0077B6).withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: const Color(0xFF0077B6).withOpacity(0.20),
+                color: const Color(0xFF0077B6).withValues(alpha: 0.20),
               ),
             ),
             child: Text(
@@ -280,7 +280,7 @@ class _TopBar extends StatelessWidget {
               Text(
                 greeting,
                 style: AppTextStyles.caption.copyWith(
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                   fontSize: 13,
                 ),
               ),
@@ -308,10 +308,10 @@ class _TopBar extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.13),
+                  color: Colors.white.withValues(alpha: 0.13),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.22),
+                    color: Colors.white.withValues(alpha: 0.22),
                   ),
                 ),
                 child: const Icon(Icons.notifications_outlined,
@@ -330,7 +330,7 @@ class _TopBar extends StatelessWidget {
                   border: Border.all(color: Colors.white, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.danger.withOpacity(0.6),
+                      color: AppColors.danger.withValues(alpha: 0.6),
                       blurRadius: 4,
                     ),
                   ],
@@ -390,13 +390,13 @@ class _HeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF023E8A).withOpacity(0.45),
+            color: const Color(0xFF023E8A).withValues(alpha: 0.45),
             blurRadius: 40,
             spreadRadius: -6,
             offset: const Offset(0, 18),
           ),
           BoxShadow(
-            color: const Color(0xFF0096C7).withOpacity(0.22),
+            color: const Color(0xFF0096C7).withValues(alpha: 0.22),
             blurRadius: 20,
             spreadRadius: -2,
             offset: const Offset(0, 4),
@@ -410,18 +410,18 @@ class _HeroCard extends StatelessWidget {
             // Subtle dot grid texture
             Positioned.fill(child: CustomPaint(painter: _DotGridPainter())),
             // Top-right radial glow
-            Positioned(
+            const Positioned(
               top: -40,
               right: -30,
               child: _GlowOrb(
-                  size: 180, color: const Color(0xFF48CAE4), opacity: 0.22),
+                  size: 180, color: Color(0xFF48CAE4), opacity: 0.22),
             ),
             // Bottom-left glow
-            Positioned(
+            const Positioned(
               bottom: -50,
               left: -20,
               child: _GlowOrb(
-                  size: 140, color: const Color(0xFF0077B6), opacity: 0.30),
+                  size: 140, color: Color(0xFF0077B6), opacity: 0.30),
             ),
             Padding(
               padding: const EdgeInsets.all(24),
@@ -437,17 +437,17 @@ class _HeroCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.14),
+                            color: Colors.white.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.25),
+                              color: Colors.white.withValues(alpha: 0.25),
                             ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.favorite_rounded,
-                                  color: Colors.white.withOpacity(0.9),
+                                  color: Colors.white.withValues(alpha: 0.9),
                                   size: 12),
                               const SizedBox(width: 5),
                               Text('Health Score',
@@ -469,15 +469,15 @@ class _HeroCard extends StatelessWidget {
                         Text(
                           'All vitals in healthy range',
                           style: AppTextStyles.captionWhite().copyWith(
-                            color: Colors.white.withOpacity(0.68),
+                            color: Colors.white.withValues(alpha: 0.68),
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Row(
+                        const Row(
                           children: [
                             _HeroPill('High Accuracy', solid: true),
-                            const SizedBox(width: 8),
+                            SizedBox(width: 8),
                             _HeroPill('Active', solid: false),
                           ],
                         ),
@@ -485,7 +485,7 @@ class _HeroCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 20),
-                  _ScoreRing(score: 94),
+                  const _ScoreRing(score: 94),
                 ],
               ),
             ),
@@ -511,7 +511,7 @@ class _GlowOrb extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color.withOpacity(opacity), Colors.transparent],
+          colors: [color.withValues(alpha: opacity), Colors.transparent],
         ),
       ),
     );
@@ -521,7 +521,7 @@ class _GlowOrb extends StatelessWidget {
 class _DotGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.045);
+    final paint = Paint()..color = Colors.white.withValues(alpha: 0.045);
     const spacing = 22.0;
     for (double x = 0; x < size.width; x += spacing) {
       for (double y = 0; y < size.height; y += spacing) {
@@ -551,7 +551,7 @@ class _ScoreRing extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF48CAE4).withOpacity(0.45),
+                  color: const Color(0xFF48CAE4).withValues(alpha: 0.45),
                   blurRadius: 24,
                   spreadRadius: 4,
                 ),
@@ -561,9 +561,9 @@ class _ScoreRing extends StatelessWidget {
           CircularProgressIndicator(
             value: score / 100,
             strokeWidth: 7.5,
-            backgroundColor: Colors.white.withOpacity(0.15),
+            backgroundColor: Colors.white.withValues(alpha: 0.15),
             valueColor:
-                AlwaysStoppedAnimation(Colors.white.withOpacity(0.95)),
+                AlwaysStoppedAnimation(Colors.white.withValues(alpha: 0.95)),
             strokeCap: StrokeCap.round,
           ),
           Center(
@@ -602,10 +602,10 @@ class _HeroPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: solid ? Colors.white.withOpacity(0.20) : Colors.transparent,
+        color: solid ? Colors.white.withValues(alpha: 0.20) : Colors.transparent,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: Colors.white.withOpacity(solid ? 0.0 : 0.40),
+          color: Colors.white.withValues(alpha: solid ? 0.0 : 0.40),
         ),
       ),
       child: Text(
@@ -696,7 +696,7 @@ class _ActionTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: glowColor.withOpacity(0.38),
+                color: glowColor.withValues(alpha: 0.38),
                 blurRadius: 18,
                 spreadRadius: -3,
                 offset: const Offset(0, 8),
@@ -849,7 +849,7 @@ class _VitalLayout extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         // Row 2: Activity + Fall Detection
-        Row(
+        const Row(
           children: [
             Expanded(
               child: _StatusCard(
@@ -857,21 +857,21 @@ class _VitalLayout extends StatelessWidget {
                 status: 'Walking',
                 statusIcon: Icons.directions_walk_rounded,
                 accentColor: AppColors.success,
-                customAnimation: const ActivityAnimWidget(
+                customAnimation: ActivityAnimWidget(
                   color: AppColors.success,
                   size: 44,
                   activityState: 'Walking',
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: _StatusCard(
                 label: 'Fall Detection',
                 status: 'Safe',
                 statusIcon: Icons.shield_rounded,
                 accentColor: AppColors.success,
-                customAnimation: const ShieldAnimWidget(
+                customAnimation: ShieldAnimWidget(
                   color: AppColors.success,
                   size: 44,
                 ),
@@ -917,7 +917,7 @@ class _FeaturedVitalCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF023E8A).withOpacity(0.45),
+              color: const Color(0xFF023E8A).withValues(alpha: 0.45),
               blurRadius: 22,
               spreadRadius: -4,
               offset: const Offset(0, 10),
@@ -936,7 +936,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(colors: [
-                    accentColor.withOpacity(0.20),
+                    accentColor.withValues(alpha: 0.20),
                     Colors.transparent,
                   ]),
                 ),
@@ -951,7 +951,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.18),
+                      color: accentColor.withValues(alpha: 0.18),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(Icons.favorite_rounded,
@@ -975,7 +975,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                         TextSpan(
                           text: ' $unit',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.60),
+                            color: Colors.white.withValues(alpha: 0.60),
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -987,7 +987,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                   Text(
                     name,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.68),
+                      color: Colors.white.withValues(alpha: 0.68),
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1004,7 +1004,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: accentColor.withOpacity(0.9),
+                              color: accentColor.withValues(alpha: 0.9),
                               blurRadius: 6,
                             ),
                           ],
@@ -1014,7 +1014,7 @@ class _FeaturedVitalCard extends StatelessWidget {
                       Text(
                         status,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.70),
+                          color: Colors.white.withValues(alpha: 0.70),
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1075,12 +1075,12 @@ class _MiniVitalCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: accentColor.withOpacity(0.14),
+              color: accentColor.withValues(alpha: 0.14),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -1120,7 +1120,7 @@ class _MiniVitalCard extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.success.withOpacity(0.7),
+                    color: AppColors.success.withValues(alpha: 0.7),
                     blurRadius: 5,
                   ),
                 ],
@@ -1162,12 +1162,12 @@ class _StatusCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.14),
+            color: accentColor.withValues(alpha: 0.14),
             blurRadius: 16,
             offset: const Offset(0, 5),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1247,7 +1247,7 @@ class _SparklinePainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [color.withOpacity(0.38), color.withOpacity(0.0)],
+          colors: [color.withValues(alpha: 0.38), color.withValues(alpha: 0.0)],
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
     );
 
@@ -1270,7 +1270,7 @@ class _SparklinePainter extends CustomPainter {
     );
 
     // Glowing endpoint dot
-    canvas.drawCircle(points.last, 6, Paint()..color = color.withOpacity(0.30));
+    canvas.drawCircle(points.last, 6, Paint()..color = color.withValues(alpha: 0.30));
     canvas.drawCircle(points.last, 3, Paint()..color = color);
     canvas.drawCircle(points.last, 1.5, Paint()..color = Colors.white);
   }
@@ -1294,15 +1294,15 @@ class _DailyInsightCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.success.withOpacity(0.12),
-            AppColors.success.withOpacity(0.04),
+            AppColors.success.withValues(alpha: 0.12),
+            AppColors.success.withValues(alpha: 0.04),
           ],
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.success.withOpacity(0.22)),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.22)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.success.withOpacity(0.12),
+            color: AppColors.success.withValues(alpha: 0.12),
             blurRadius: 18,
             offset: const Offset(0, 5),
           ),
@@ -1315,14 +1315,14 @@ class _DailyInsightCard extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.success.withOpacity(0.28),
-                  AppColors.success.withOpacity(0.14),
+                  AppColors.success.withValues(alpha: 0.28),
+                  AppColors.success.withValues(alpha: 0.14),
                 ],
               ),
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.success.withOpacity(0.25),
+                  color: AppColors.success.withValues(alpha: 0.25),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),

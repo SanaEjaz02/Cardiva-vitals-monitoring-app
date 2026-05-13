@@ -1,6 +1,5 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -10,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../widgets/atoms/pill_widget.dart';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -161,10 +159,10 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           controller: ctrl,
           autofocus: true,
           style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             hintText: 'Chat name',
-            hintStyle: const TextStyle(color: Colors.white38),
-            enabledBorder: const UnderlineInputBorder(
+            hintStyle: TextStyle(color: Colors.white38),
+            enabledBorder: UnderlineInputBorder(
                 borderSide: BorderSide(color: Colors.white24)),
             focusedBorder: UnderlineInputBorder(
                 borderSide: BorderSide(color: AppColors.primary)),
@@ -178,7 +176,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text('Save',
+            child: const Text('Save',
                 style: TextStyle(color: AppColors.primary)),
           ),
         ],
@@ -346,11 +344,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                   height: 34,
                   decoration: BoxDecoration(
                     color: Colors.white
-                        .withOpacity(0.15 + _pulseCtrl.value * 0.1),
+                        .withValues(alpha: 0.15 + _pulseCtrl.value * 0.1),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: Colors.white
-                          .withOpacity(0.3 + _pulseCtrl.value * 0.2),
+                          .withValues(alpha: 0.3 + _pulseCtrl.value * 0.2),
                       width: 1.5,
                     ),
                   ),
@@ -378,7 +376,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                       Text(
                         'Online · Health Assistant',
                         style: AppTextStyles.caption.copyWith(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontSize: 10,
                         ),
                       ),
@@ -476,8 +474,8 @@ class _ChatbotScreenState extends State<ChatbotScreen>
               ),
             ),
             const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 'RECENT',
                 style: TextStyle(
@@ -492,14 +490,14 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             // Session list
             Expanded(
               child: _sessions.isEmpty
-                  ? Center(
+                  ? const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.chat_bubble_outline_rounded,
                               color: Colors.white24, size: 44),
-                          const SizedBox(height: 12),
-                          const Text('No conversations yet',
+                          SizedBox(height: 12),
+                          Text('No conversations yet',
                               style: TextStyle(
                                   color: Colors.white38, fontSize: 13)),
                         ],
@@ -513,10 +511,10 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                     ),
             ),
             const Divider(color: Color(0xFF1F2937)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: Row(
-                children: const [
+                children: [
                   Icon(Icons.lock_outline_rounded,
                       color: Colors.white38, size: 13),
                   SizedBox(width: 8),
@@ -539,11 +537,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       margin: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
         color: isActive
-            ? AppColors.primary.withOpacity(0.15)
+            ? AppColors.primary.withValues(alpha: 0.15)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         border: isActive
-            ? Border.all(color: AppColors.primary.withOpacity(0.3))
+            ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
             : null,
       ),
       child: ListTile(
@@ -581,9 +579,9 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             if (val == 'delete') _deleteSession(s);
           },
           itemBuilder: (_) => [
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'rename',
-              child: Row(children: const [
+              child: Row(children: [
                 Icon(Icons.edit_outlined, color: Colors.white70, size: 15),
                 SizedBox(width: 10),
                 Text('Rename',
@@ -591,9 +589,9 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                         TextStyle(color: Colors.white70, fontSize: 13)),
               ]),
             ),
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'delete',
-              child: Row(children: const [
+              child: Row(children: [
                 Icon(Icons.delete_outline_rounded,
                     color: Color(0xFFEF4444), size: 15),
                 SizedBox(width: 10),
@@ -671,7 +669,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.4),
+                      color: AppColors.primary.withValues(alpha: 0.4),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -705,7 +703,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
               color: AppColors.primaryBg,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                  color: AppColors.primary.withOpacity(0.3)),
+                  color: AppColors.primary.withValues(alpha: 0.3)),
             ),
             child: Text(
               _kSuggestions[i],
@@ -886,7 +884,7 @@ class _WelcomeViewState extends State<_WelcomeView> {
                   width: 112 + widget.pulseController.value * 16,
                   height: 112 + widget.pulseController.value * 16,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(
+                    color: AppColors.primary.withValues(alpha: 
                         (0.05 - widget.pulseController.value * 0.04)
                             .clamp(0.0, 0.05)),
                     shape: BoxShape.circle,
@@ -896,7 +894,7 @@ class _WelcomeViewState extends State<_WelcomeView> {
                   width: 94 + widget.pulseController.value * 8,
                   height: 94 + widget.pulseController.value * 8,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(
+                    color: AppColors.primary.withValues(alpha: 
                         (0.1 - widget.pulseController.value * 0.08)
                             .clamp(0.0, 0.1)),
                     shape: BoxShape.circle,
@@ -917,7 +915,7 @@ class _WelcomeViewState extends State<_WelcomeView> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.4),
+                    color: AppColors.primary.withValues(alpha: 0.4),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                     spreadRadius: -4,
@@ -961,17 +959,17 @@ class _WelcomeViewState extends State<_WelcomeView> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          tip.$2.withOpacity(0.13),
-                          tip.$2.withOpacity(0.04),
+                          tip.$2.withValues(alpha: 0.13),
+                          tip.$2.withValues(alpha: 0.04),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       border:
-                          Border.all(color: tip.$2.withOpacity(0.25)),
+                          Border.all(color: tip.$2.withValues(alpha: 0.25)),
                       boxShadow: isCenter
                           ? [
                               BoxShadow(
-                                color: tip.$2.withOpacity(0.18),
+                                color: tip.$2.withValues(alpha: 0.18),
                                 blurRadius: 14,
                                 offset: const Offset(0, 4),
                               )
@@ -984,7 +982,7 @@ class _WelcomeViewState extends State<_WelcomeView> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: tip.$2.withOpacity(0.15),
+                            color: tip.$2.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(tip.$1, color: tip.$2, size: 22),
@@ -1039,7 +1037,7 @@ class _WelcomeViewState extends State<_WelcomeView> {
                 decoration: BoxDecoration(
                   color: i == _page
                       ? AppColors.primary
-                      : AppColors.primary.withOpacity(0.22),
+                      : AppColors.primary.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -1384,7 +1382,7 @@ class _ThumbBtn extends StatelessWidget {
           size: 14,
           color: isActive
               ? activeColor
-              : AppColors.textSecondary.withOpacity(0.45),
+              : AppColors.textSecondary.withValues(alpha: 0.45),
         ),
       );
 }
@@ -1453,7 +1451,7 @@ class _TypingIndicator extends StatelessWidget {
                       margin:
                           const EdgeInsets.symmetric(horizontal: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.6),
+                        color: AppColors.primary.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -1566,7 +1564,7 @@ class _InfoSheet extends StatelessWidget {
               color: AppColors.warningBg,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: AppColors.warning.withOpacity(0.4)),
+                  color: AppColors.warning.withValues(alpha: 0.4)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1622,7 +1620,7 @@ class _InfoRow extends StatelessWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, size: 16, color: color),
@@ -1654,8 +1652,9 @@ class _ChatMessage {
         vital = null,
         timestamp = timestamp ?? DateTime.now();
 
-  _ChatMessage.bot(this.text, {this.vital, DateTime? timestamp})
+  _ChatMessage.bot(this.text, {DateTime? timestamp})
       : isUser = false,
+        vital = null,
         timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {

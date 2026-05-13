@@ -1,4 +1,3 @@
-import 'dart:math';
 import '../models/vital.dart';
 import '../theme/app_colors.dart';
 
@@ -6,8 +5,6 @@ class VitalsRepository {
   VitalsRepository._();
 
   static final VitalsRepository instance = VitalsRepository._();
-
-  final _random = Random();
 
   // Current live readings — updated by mock BLE stream
   List<Vital> get currentVitals => _mockVitals;

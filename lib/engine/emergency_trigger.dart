@@ -1,3 +1,4 @@
+import '../models/alert_class.dart';
 import '../models/health_event.dart';
 import '../services/cloud_service.dart';
 import '../services/location_service.dart';
@@ -32,7 +33,7 @@ class EmergencyTrigger {
     final message = '''
 ⚠️ CARDIVA $alertType ALERT ⚠️
 Patient: $userName
-Status: ${event.overallStatus.name.toUpperCase()}
+Status: ${event.alertClass.label}
 Fall Detected: ${r.fallDetected ? 'YES' : 'No'}
 
 Vitals at time of alert:

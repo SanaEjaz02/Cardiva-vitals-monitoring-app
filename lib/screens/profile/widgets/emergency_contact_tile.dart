@@ -51,7 +51,7 @@ class EmergencyContactTile extends StatelessWidget {
             Expanded(
               child: Text(
                 contact.name,
-                style: TextStyle(
+                style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                   color: AppColors.textPrimary,
@@ -66,7 +66,7 @@ class EmergencyContactTile extends StatelessWidget {
                   color: AppColors.primary,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
+                child: const Text(
                   'PRIMARY',
                   style: TextStyle(
                     fontSize: 9,
@@ -83,13 +83,13 @@ class EmergencyContactTile extends StatelessWidget {
           children: [
             Text(
               contact.phone,
-              style: TextStyle(
+              style: const TextStyle(
                   fontSize: 13, color: AppColors.textSecondary),
             ),
             if (contact.relation.isNotEmpty)
               Text(
                 contact.relation,
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 11, color: AppColors.textHint),
               ),
           ],
@@ -105,22 +105,22 @@ class EmergencyContactTile extends StatelessWidget {
           },
           itemBuilder: (_) => [
             if (!contact.isPrimary)
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'primary',
                 child: Row(children: [
-                  const Icon(Icons.star_rounded,
+                  Icon(Icons.star_rounded,
                       size: 16, color: AppColors.warning),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text('Set as Primary',
                       style: TextStyle(fontSize: 13)),
                 ]),
               ),
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'delete',
               child: Row(children: [
-                const Icon(Icons.delete_rounded,
+                Icon(Icons.delete_rounded,
                     size: 16, color: AppColors.emergency),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text('Delete',
                     style: TextStyle(
                         fontSize: 13, color: AppColors.emergency)),

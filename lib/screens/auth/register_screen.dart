@@ -67,7 +67,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Create Account',
                   style: TextStyle(
                     fontSize: 26,
@@ -75,7 +75,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                Text(
+                const Text(
                   'Join CARDIVA health monitoring',
                   style: TextStyle(
                       fontSize: 13, color: AppColors.textSecondary),
@@ -119,7 +119,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _passwordCtrl,
                   obscureText: _obscure,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 14, color: AppColors.textPrimary),
                   validator: Validators.password,
                   decoration: _deco(
@@ -161,7 +161,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               strokeWidth: 2.5,
                             ),
                           )
-                        : Text(
+                        : const Text(
                             'Create Account',
                             style: TextStyle(
                               fontSize: 15,
@@ -176,7 +176,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: RichText(
-                      text: TextSpan(
+                      text: const TextSpan(
                         style: TextStyle(fontSize: 13),
                         children: [
                           TextSpan(
@@ -205,7 +205,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Widget _buildLabel(String text) => Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: AppColors.textPrimary,
@@ -223,7 +223,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         controller: ctrl,
         keyboardType: keyboardType,
         style:
-            TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            const TextStyle(fontSize: 14, color: AppColors.textPrimary),
         validator: validator,
         decoration: _deco(hint: hint, icon: icon),
       );
@@ -233,7 +233,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       InputDecoration(
         hintText: hint,
         hintStyle:
-            TextStyle(fontSize: 13, color: AppColors.textHint),
+            const TextStyle(fontSize: 13, color: AppColors.textHint),
         prefixIcon: Icon(icon, color: AppColors.primaryLight, size: 20),
         suffixIcon: suffix,
         filled: true,

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -181,7 +181,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
                             color:
-                                AppColors.primary.withOpacity(0.25)),
+                                AppColors.primary.withValues(alpha: 0.25)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -213,12 +213,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 20),
               // ── Stats strip ────────────────────────────────────────
-              Row(
+              const Row(
                 children: [
                   _StatCard(label: 'Days Monitored', value: '47'),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   _StatCard(label: 'Alerts Sent', value: '3'),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   _StatCard(label: 'Avg Score', value: '91'),
                 ],
               ),
@@ -229,14 +229,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ProfileRow(
                     icon: Icons.contacts_rounded,
                     label: 'Emergency Contacts',
-                    badge: PillWidget('2', variant: PillVariant.primary),
+                    badge: const PillWidget('2', variant: PillVariant.primary),
                     onTap: () => Navigator.pushNamed(
                         context, AppRouter.emergencyContacts),
                   ),
                   _ProfileRow(
                     icon: Icons.people_rounded,
                     label: 'Attendants',
-                    badge: PillWidget('1', variant: PillVariant.primary),
+                    badge: const PillWidget('1', variant: PillVariant.primary),
                     onTap: () => Navigator.pushNamed(
                         context, AppRouter.settingsAttendants),
                   ),
@@ -263,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.watch_rounded,
                     label: 'Device Status',
                     badge:
-                        PillWidget('Connected', variant: PillVariant.success),
+                        const PillWidget('Connected', variant: PillVariant.success),
                     onTap: () {},
                   ),
                   _ProfileRow(

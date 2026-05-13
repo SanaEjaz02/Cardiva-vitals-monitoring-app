@@ -1,265 +1,614 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/alert_class.dart';
+import '../../models/analysis_record.dart';
+import '../../providers/analysis_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../services/pdf_report_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/ring_widget.dart';
-import '../../widgets/atoms/spark_widget.dart';
 
-class HealthReportScreen extends StatefulWidget {
+class HealthReportScreen extends ConsumerStatefulWidget {
   const HealthReportScreen({super.key});
 
   @override
-  State<HealthReportScreen> createState() => _HealthReportScreenState();
+  ConsumerState<HealthReportScreen> createState() => _HealthReportScreenState();
 }
 
-class _HealthReportScreenState extends State<HealthReportScreen> {
-  int _weekOffset = 0;
+class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
+  bool _exporting = false;
+  bool _sharingWA = false;
 
-  String get _weekLabel {
-    if (_weekOffset == 0) return 'Apr 19 – Apr 25';
-    if (_weekOffset == -1) return 'Apr 12 – Apr 18';
-    return 'Apr 26 – May 2';
+  Future<void> _exportPdf(
+      DailySummary summary, List<AnalysisRecord> records) async {
+    setState(() => _exporting = true);
+    try {
+      final user = ref.read(userProvider);
+      await PdfReportService.shareViaSheet(
+        summary: summary,
+        records: records,
+        patientName: user?.name,
+        gender: user?.gender,
+        age: user?.age,
+        heightCm: user?.heightCm,
+        weightKg: user?.weightKg,
+        bmi: user?.bmi,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
-  static const _vitals = [
-    _VitalDelta('Heart Rate', Icons.favorite_rounded, '72 bpm', '+2 bpm',
-        true, VitalDisplayStatus.normal),
-    _VitalDelta('SpO₂', Icons.air_rounded, '95%', '-1%',
-        false, VitalDisplayStatus.warning),
-    _VitalDelta('HRV', Icons.timeline_rounded, '45 ms', '+4 ms',
-        true, VitalDisplayStatus.normal),
-    _VitalDelta('Respiration', Icons.waves_rounded, '16/min', '0',
-        true, VitalDisplayStatus.normal),
-    _VitalDelta('Activity', Icons.directions_walk_rounded, '8,200 steps', '+8%',
-        true, VitalDisplayStatus.normal),
-    _VitalDelta('Fall Detection', Icons.shield_outlined, 'Safe', '0 falls',
-        true, VitalDisplayStatus.normal),
-  ];
-
-  static const _activityDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  static const _activityValues = [0.6, 0.8, 0.5, 0.9, 0.7, 0.4, 0.3];
+  Future<void> _shareToWhatsApp(DailySummary summary) async {
+    setState(() => _sharingWA = true);
+    try {
+      final user = ref.read(userProvider);
+      final sent = await PdfReportService.shareTextToWhatsApp(
+        summary,
+        name: user?.name,
+      );
+      if (!sent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('WhatsApp not found on this device.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharingWA = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final summary = ref.watch(dailySummaryProvider);
+    final records = ref.watch(todayAnalysisProvider);
+
     return Scaffold(
       backgroundColor: AppColors.bgWhite,
       appBar: AppBar(
+        backgroundColor: AppColors.bgWhite,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_rounded,
+              size: 20, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Health Report', style: AppTextStyles.h1),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.share_outlined, size: 20),
+            icon: const Icon(Icons.share_outlined,
+                size: 20, color: AppColors.textPrimary),
             onPressed: () {},
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            // Date navigation
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left_rounded),
-                  onPressed: () => setState(() => _weekOffset--),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgLight,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(_weekLabel, style: AppTextStyles.h2),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right_rounded),
-                  onPressed: () => setState(() => _weekOffset++),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            // Score hero card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: AppColors.heroCard,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                      color: AppColors.shadowLg,
-                      blurRadius: 28,
-                      offset: Offset(0, 8)),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Health Score',
-                          style: AppTextStyles.caption.copyWith(
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('92 / 100',
-                            style: AppTextStyles.numericDisplay
-                                .copyWith(color: Colors.white, fontSize: 36)),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.trending_up_rounded,
-                                color: AppColors.success, size: 16),
-                            const SizedBox(width: 4),
-                            Text('↑ 3 from last week',
-                                style: AppTextStyles.caption
-                                    .copyWith(color: AppColors.success)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  RingWidget(
-                    percent: 0.92,
-                    color: Colors.white,
-                    size: 56,
-                    strokeWidth: 6,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // AI Summary card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.bgWhite,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [
-                  BoxShadow(
-                      color: AppColors.shadowSm,
-                      blurRadius: 12,
-                      offset: Offset(0, 2)),
-                ],
-              ),
-              child: Row(
+      body: summary == null
+          ? _buildEmptyState()
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.auto_awesome_rounded,
-                      color: Color(0xFF8B5CF6), size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your cardiovascular health remained stable this week with a slight improvement in HRV. '
-                          'SpO₂ dipped briefly on Apr 21 — consider monitoring during physical activity.',
-                          style: AppTextStyles.body,
-                        ),
-                        const SizedBox(height: 6),
-                        Text('Generated by Cardiva AI',
-                            style: AppTextStyles.caption),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 4),
+                  _buildDateHeader(),
+                  const SizedBox(height: 16),
+                  _buildScoreHero(summary),
+                  const SizedBox(height: 16),
+                  _buildAiSummary(summary),
+                  const SizedBox(height: 16),
+                  _buildBreakdown(summary),
+                  const SizedBox(height: 16),
+                  _buildAvgVitals(summary),
+                  const SizedBox(height: 16),
+                  _buildTimeline(records),
+                  const SizedBox(height: 16),
+                  _buildExportButtons(summary, records),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            // Vital deltas
-            ..._vitals.map((v) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _VitalDeltaRow(vital: v),
-                )),
+    );
+  }
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: AppColors.primaryBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bar_chart_rounded,
+                  color: AppColors.primary, size: 40),
+            ),
+            const SizedBox(height: 20),
+            Text('No analyses yet today',
+                style: AppTextStyles.h2, textAlign: TextAlign.center),
             const SizedBox(height: 8),
-            // Activity bars
-            Text('Activity This Week', style: AppTextStyles.h2),
-            const SizedBox(height: 12),
-            _ActivityBars(
-              days: _activityDays,
-              values: _activityValues,
+            Text(
+              'Auto-analysis runs at your set interval.\nOpen AI Monitor to start, or tap Analyze Now.',
+              style: AppTextStyles.body
+                  .copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            // Export buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                    label: const Text('Export PDF'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.local_hospital_outlined, size: 18),
-                    label: const Text('Share with Doctor'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
-}
 
-class _VitalDeltaRow extends StatelessWidget {
-  final _VitalDelta vital;
-  const _VitalDeltaRow({required this.vital});
+  // ── Date header ───────────────────────────────────────────────────────────
+  Widget _buildDateHeader() {
+    final now = DateTime.now();
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final dateStr =
+        'Today, ${months[now.month - 1]} ${now.day}, ${now.year}';
 
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.statusColor(vital.status);
-    final deltaColor =
-        vital.isPositive ? AppColors.success : AppColors.warning;
+    return Row(
+      children: [
+        const Icon(Icons.calendar_today_rounded,
+            size: 15, color: AppColors.textSecondary),
+        const SizedBox(width: 6),
+        Text(dateStr,
+            style: AppTextStyles.caption
+                .copyWith(fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  // ── Score hero card ───────────────────────────────────────────────────────
+  Widget _buildScoreHero(DailySummary s) {
+    final scoreColor = s.healthScore >= 80
+        ? AppColors.success
+        : s.healthScore >= 60
+            ? AppColors.warning
+            : AppColors.danger;
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.bgWhite,
-        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          transform: GradientRotation(2.356),
+          colors: [AppColors.primary, AppColors.primaryDeep],
+        ),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadowSm, blurRadius: 10, offset: Offset(0, 2)),
+              color: AppColors.shadowLg,
+              blurRadius: 28,
+              offset: Offset(0, 8)),
         ],
       ),
       child: Row(
         children: [
-          Icon(vital.icon, color: color, size: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Health Score',
+                  style: AppTextStyles.caption
+                      .copyWith(color: Colors.white.withValues(alpha: 0.7)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${s.healthScore} / 100',
+                  style: AppTextStyles.numericDisplay
+                      .copyWith(color: Colors.white, fontSize: 36),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    _StatPill(
+                        label: '${s.totalAnalyses} analyses',
+                        icon: Icons.psychology_rounded),
+                    _StatPill(
+                        label: '${s.normalCount} normal',
+                        icon: Icons.check_circle_outline_rounded),
+                    if (s.warningCount > 0)
+                      _StatPill(
+                          label: '${s.warningCount} warnings',
+                          icon: Icons.warning_amber_rounded),
+                    if (s.emergencyCount > 0)
+                      _StatPill(
+                          label: '${s.emergencyCount} emergency',
+                          icon: Icons.emergency_rounded),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          RingWidget(
+            percent: s.healthScore / 100,
+            color: scoreColor,
+            size: 64,
+            strokeWidth: 7,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── AI summary card ───────────────────────────────────────────────────────
+  Widget _buildAiSummary(DailySummary s) {
+    return _SectionCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.auto_awesome_rounded,
+              color: Color(0xFF8B5CF6), size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(vital.name, style: AppTextStyles.caption),
-                Text(vital.avgValue,
-                    style: AppTextStyles.body.copyWith(color: color)),
+                Text(s.summaryText, style: AppTextStyles.body),
+                const SizedBox(height: 6),
+                Text('Generated by Cardiva AI',
+                    style: AppTextStyles.caption),
               ],
             ),
           ),
-          Text(vital.delta,
-              style: AppTextStyles.caption.copyWith(color: deltaColor)),
-          const SizedBox(width: 10),
-          SparkWidget(
-            dataPoints: [68, 70, 72, 71, 73, 72, 74],
-            color: color,
-            width: 48,
-            height: 24,
+        ],
+      ),
+    );
+  }
+
+  // ── Analysis breakdown ────────────────────────────────────────────────────
+  Widget _buildBreakdown(DailySummary s) {
+    final total = s.totalAnalyses;
+    return _SectionCard(
+      title: 'Analysis Breakdown',
+      child: Column(
+        children: [
+          _BreakdownBar(
+            label: 'Normal',
+            count: s.normalCount,
+            total: total,
+            color: AppColors.success,
+          ),
+          const SizedBox(height: 8),
+          _BreakdownBar(
+            label: 'Warning',
+            count: s.warningCount,
+            total: total,
+            color: AppColors.warning,
+          ),
+          const SizedBox(height: 8),
+          _BreakdownBar(
+            label: 'Emergency',
+            count: s.emergencyCount,
+            total: total,
+            color: AppColors.danger,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Average vitals ────────────────────────────────────────────────────────
+  Widget _buildAvgVitals(DailySummary s) {
+    return _SectionCard(
+      title: 'Average Vitals Today',
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        childAspectRatio: 2.5,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        children: [
+          _VitalTile(
+            icon: Icons.favorite_rounded,
+            label: 'Heart Rate',
+            value: '${s.avgHr.toStringAsFixed(0)} bpm',
+            color: _hrColor(s.avgHr),
+          ),
+          _VitalTile(
+            icon: Icons.air_rounded,
+            label: 'SpO₂',
+            value: '${s.avgSpo2.toStringAsFixed(1)}%',
+            color: _spo2Color(s.avgSpo2),
+          ),
+          _VitalTile(
+            icon: Icons.timeline_rounded,
+            label: 'HRV',
+            value: '${s.avgHrv.toStringAsFixed(0)} ms',
+            color: _hrvColor(s.avgHrv),
+          ),
+          _VitalTile(
+            icon: Icons.waves_rounded,
+            label: 'Respiration',
+            value: '${s.avgRr.toStringAsFixed(0)}/min',
+            color: _rrColor(s.avgRr),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Analysis timeline ─────────────────────────────────────────────────────
+  Widget _buildTimeline(List<AnalysisRecord> records) {
+    if (records.isEmpty) return const SizedBox.shrink();
+    final shown = records.reversed.take(12).toList();
+
+    return _SectionCard(
+      title: 'Analysis Timeline',
+      child: Column(
+        children: shown.map((r) => _TimelineEntry(record: r)).toList(),
+      ),
+    );
+  }
+
+  // ── Export buttons ────────────────────────────────────────────────────────
+  Widget _buildExportButtons(
+      DailySummary summary, List<AnalysisRecord> records) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Export PDF → native share sheet (WhatsApp, email, Drive…)
+            Expanded(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed:
+                    _exporting ? null : () => _exportPdf(summary, records),
+                icon: _exporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.primary),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 17),
+                label: Text(_exporting ? 'Generating…' : 'Export PDF'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // WhatsApp → opens WhatsApp with a formatted text summary
+            Expanded(
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366), // WhatsApp green
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed:
+                    _sharingWA ? null : () => _shareToWhatsApp(summary),
+                icon: _sharingWA
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.chat_rounded, size: 17),
+                label: Text(_sharingWA ? 'Opening…' : 'WhatsApp'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Full-width "Share with Doctor" — opens share sheet for the PDF
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              side: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed:
+                _exporting ? null : () => _exportPdf(summary, records),
+            icon: const Icon(Icons.share_outlined, size: 17),
+            label: const Text('Share Report (PDF)'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Color helpers ─────────────────────────────────────────────────────────
+  Color _hrColor(double v) {
+    if (v < 40 || v > 150) return AppColors.danger;
+    if (v < 60 || v > 100) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  Color _spo2Color(double v) {
+    if (v < 90) return AppColors.danger;
+    if (v < 95) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  Color _hrvColor(double v) {
+    if (v < 20) return AppColors.danger;
+    if (v < 50) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  Color _rrColor(double v) {
+    if (v < 5 || v > 30) return AppColors.danger;
+    if (v < 12 || v > 20) return AppColors.warning;
+    return AppColors.success;
+  }
+}
+
+// ── Section card ──────────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String? title;
+  final Widget child;
+
+  const _SectionCard({this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.shadowSm,
+              blurRadius: 12,
+              offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(title!, style: AppTextStyles.h2),
+            const Divider(color: AppColors.divider),
+            const SizedBox(height: 4),
+          ],
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ── Breakdown bar ─────────────────────────────────────────────────────────
+
+class _BreakdownBar extends StatelessWidget {
+  final String label;
+  final int count;
+  final int total;
+  final Color color;
+
+  const _BreakdownBar({
+    required this.label,
+    required this.count,
+    required this.total,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = total > 0 ? count / total : 0.0;
+    final pctStr = '${(pct * 100).round()}%';
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(label, style: AppTextStyles.caption),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pct,
+              backgroundColor: color.withValues(alpha: 0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+              minHeight: 10,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 36,
+          child: Text(
+            pctStr,
+            style: AppTextStyles.caption.copyWith(
+                color: color, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.end,
+          ),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 22,
+          child: Text(
+            '($count)',
+            style: AppTextStyles.caption
+                .copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Vital tile ────────────────────────────────────────────────────────────
+
+class _VitalTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _VitalTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label,
+                    style: AppTextStyles.caption,
+                    overflow: TextOverflow.ellipsis),
+                Text(value,
+                    style: AppTextStyles.body.copyWith(
+                        color: color, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
         ],
       ),
@@ -267,47 +616,103 @@ class _VitalDeltaRow extends StatelessWidget {
   }
 }
 
-class _ActivityBars extends StatelessWidget {
-  final List<String> days;
-  final List<double> values;
+// ── Timeline entry ────────────────────────────────────────────────────────
 
-  const _ActivityBars({required this.days, required this.values});
+class _TimelineEntry extends StatelessWidget {
+  final AnalysisRecord record;
+
+  const _TimelineEntry({required this.record});
 
   @override
   Widget build(BuildContext context) {
-    const maxHeight = 80.0;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: List.generate(days.length, (i) {
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              width: 28,
-              height: values[i] * maxHeight,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(6),
-              ),
+    final ac = record.prediction.alertClass;
+    final color = switch (ac) {
+      AlertClass.emergency => AppColors.danger,
+      AlertClass.fallAlert || AlertClass.vitalsAlert => AppColors.warning,
+      AlertClass.normal => AppColors.success,
+    };
+
+    final timeStr = _fmtTime(record.timestamp);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          // Time
+          SizedBox(
+            width: 56,
+            child: Text(timeStr,
+                style: AppTextStyles.caption
+                    .copyWith(fontWeight: FontWeight.w600)),
+          ),
+          // Status dot
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 6),
-            Text(days[i], style: AppTextStyles.caption),
-          ],
-        );
-      }),
+          ),
+          // Status badge
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              ac.label,
+              style: AppTextStyles.caption.copyWith(
+                  color: color, fontWeight: FontWeight.w700, fontSize: 10),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Vitals
+          Expanded(
+            child: Text(
+              'HR ${record.heartRate.toStringAsFixed(0)}  ·  SpO₂ ${record.spo2.toStringAsFixed(0)}%',
+              style: AppTextStyles.caption,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  String _fmtTime(DateTime t) {
+    final h = t.hour;
+    final m = t.minute.toString().padLeft(2, '0');
+    final period = h >= 12 ? 'PM' : 'AM';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12:$m $period';
   }
 }
 
-class _VitalDelta {
-  final String name;
-  final IconData icon;
-  final String avgValue;
-  final String delta;
-  final bool isPositive;
-  final VitalDisplayStatus status;
+// ── Stat pill (hero card) ─────────────────────────────────────────────────
 
-  const _VitalDelta(this.name, this.icon, this.avgValue, this.delta,
-      this.isPositive, this.status);
+class _StatPill extends StatelessWidget {
+  final String label;
+  final IconData icon;
+
+  const _StatPill({required this.label, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: Colors.white.withValues(alpha: 0.8)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: AppTextStyles.caption
+              .copyWith(color: Colors.white.withValues(alpha: 0.85)),
+        ),
+      ],
+    );
+  }
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
@@ -211,7 +211,7 @@ class _Slide2Illustration extends StatelessWidget {
         Icon(
           Icons.shield_outlined,
           size: 120,
-          color: AppColors.primary.withOpacity(0.15),
+          color: AppColors.primary.withValues(alpha: 0.15),
         ),
         Container(
           width: 80,
@@ -228,8 +228,7 @@ class _Slide2Illustration extends StatelessWidget {
         ),
         // Floating data dots
         ...List.generate(6, (i) {
-          final angle = i * 60.0 * 3.14159 / 180;
-          final r = 80.0;
+          const r = 80.0;
           return Positioned(
             left: 120 + r * (0.8 * (i % 2 == 0 ? 1 : -0.7)),
             top: 80 + r * (0.5 * (i < 3 ? -1 : 1)),
@@ -237,7 +236,7 @@ class _Slide2Illustration extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.7),
+                color: AppColors.secondary.withValues(alpha: 0.7),
                 shape: BoxShape.circle,
               ),
             ),

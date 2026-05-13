@@ -35,7 +35,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
         ));
 
   static final _seed = <AppNotification>[
-    AppNotification(
+    const AppNotification(
       id: '1',
       section: 'Today',
       title: 'Fall Detected',
@@ -43,7 +43,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
       time: '10:15 AM',
       type: NotifType.alert,
     ),
-    AppNotification(
+    const AppNotification(
       id: '2',
       section: 'Today',
       title: 'SpO₂ Warning',
@@ -51,7 +51,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
       time: '10:02 AM',
       type: NotifType.health,
     ),
-    AppNotification(
+    const AppNotification(
       id: '3',
       section: 'Yesterday',
       title: 'Device Connected',
@@ -60,7 +60,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
       type: NotifType.system,
       isRead: true,
     ),
-    AppNotification(
+    const AppNotification(
       id: '4',
       section: 'Yesterday',
       title: 'Weekly Report Ready',
@@ -69,7 +69,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
       type: NotifType.health,
       isRead: true,
     ),
-    AppNotification(
+    const AppNotification(
       id: '5',
       section: 'Earlier this week',
       title: 'Heart Rate Alert',

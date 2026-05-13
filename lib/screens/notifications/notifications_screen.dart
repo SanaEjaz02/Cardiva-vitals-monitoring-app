@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/notification_model.dart';
 import '../../providers/notifications_provider.dart';
@@ -160,7 +160,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 color: AppColors.warningBg,
                 borderRadius: BorderRadius.circular(10),
                 border:
-                    Border.all(color: AppColors.warning.withOpacity(0.3)),
+                    Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -175,7 +175,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => notifier.toggleMuted(activeType!),
+                    onTap: () => notifier.toggleMuted(activeType),
                     child: Text(
                       'Unmute',
                       style: AppTextStyles.caption.copyWith(
@@ -344,7 +344,7 @@ class _NotifCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: stripe.withOpacity(0.1),
+                    color: stripe.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(_icon, color: stripe, size: 18),

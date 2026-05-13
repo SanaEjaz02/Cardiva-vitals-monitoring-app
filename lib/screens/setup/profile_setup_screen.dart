@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+import '../../models/user_profile.dart';
+import '../../providers/user_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
 import '../../router/app_router.dart';
 
-class ProfileSetupScreen extends StatefulWidget {
+class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});
 
   @override
-  State<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
+  ConsumerState<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
 }
 
-class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
+class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   DateTime? _dob;
@@ -218,7 +222,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       const SizedBox(height: 12),
                       // Blood type dropdown
                       DropdownButtonFormField<String>(
-                        value: _bloodType,
+                        initialValue: _bloodType,
                         hint: Text('Blood type',
                             style: AppTextStyles.body
                                 .copyWith(color: AppColors.textSecondary)),
@@ -244,7 +248,22 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isValid
-                      ? () => Navigator.pushNamed(context, AppRouter.setupPair)
+                      ? () {
+                          ref.read(userProvider.notifier).setUser(
+                                UserProfile(
+                                  id: const Uuid().v4(),
+                                  name: _nameCtrl.text.trim(),
+                                  email: '',
+                                  phone: '',
+                                  dateOfBirth: _dob!,
+                                  gender: _gender ?? 'Other',
+                                  bloodGroup: _bloodType ?? 'A+',
+                                  heightCm: double.tryParse(_heightCtrl.text) ?? 170.0,
+                                  weightKg: double.tryParse(_weightCtrl.text) ?? 70.0,
+                                ),
+                              );
+                          Navigator.pushNamed(context, AppRouter.setupPair);
+                        }
                       : null,
                   child: const Text('Next'),
                 ),

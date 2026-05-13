@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -19,7 +19,7 @@ class EmergencyPopup extends StatefulWidget {
     return showGeneralDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.6),
+      barrierColor: Colors.black.withValues(alpha: 0.6),
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, anim, _) => EmergencyPopup(
         triggerType: triggerType,
@@ -28,7 +28,7 @@ class EmergencyPopup extends StatefulWidget {
       transitionBuilder: (ctx, anim, _, child) {
         return BackdropFilter(
           filter: ColorFilter.mode(
-            Colors.black.withOpacity(0.1 * anim.value),
+            Colors.black.withValues(alpha: 0.1 * anim.value),
             BlendMode.srcOver,
           ),
           child: SlideTransition(
@@ -328,7 +328,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                             Text('+92-333-1234567',
                                 style: AppTextStyles.caption),
                             const SizedBox(height: 4),
-                            SkeletonLoader(
+                            const SkeletonLoader(
                                 width: 140, height: 10, radius: 4),
                           ],
                         ),

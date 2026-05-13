@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../services/session_service.dart';
-import '../../router/app_router.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../auth/auth_screen.dart';
 import '../main_nav_screen.dart';
@@ -134,7 +133,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.accentTint.withOpacity(0.5),
+                      color: AppColors.accentTint.withValues(alpha: 0.5),
                       blurRadius: 24,
                       offset: const Offset(0, 8),
                     ),

@@ -42,13 +42,13 @@ class VitalChart extends StatelessWidget {
     final meta = _meta[vitalIndex];
 
     if (readings.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.show_chart_rounded,
                 size: 48, color: AppColors.primaryLightest),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               'Waiting for dataâ€¦',
               style: TextStyle(
@@ -80,7 +80,7 @@ class VitalChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: (maxY - minY) / 4,
-            getDrawingHorizontalLine: (_) => FlLine(
+            getDrawingHorizontalLine: (_) => const FlLine(
               color: AppColors.primaryLightest,
               strokeWidth: 1,
             ),
@@ -93,7 +93,7 @@ class VitalChart extends StatelessWidget {
                 reservedSize: 44,
                 getTitlesWidget: (v, _) => Text(
                   v.toStringAsFixed(0),
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 10, color: AppColors.textHint),
                 ),
               ),
@@ -113,7 +113,7 @@ class VitalChart extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 9, color: AppColors.textHint),
                     ),
                   );
@@ -130,7 +130,7 @@ class VitalChart extends StatelessWidget {
               getTooltipItems: (spots) => spots
                   .map((s) => LineTooltipItem(
                         '${s.y.toStringAsFixed(1)} ${meta.unit}',
-                        TextStyle(
+                        const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -153,8 +153,8 @@ class VitalChart extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    meta.color.withOpacity(0.25),
-                    meta.color.withOpacity(0.02),
+                    meta.color.withValues(alpha: 0.25),
+                    meta.color.withValues(alpha: 0.02),
                   ],
                 ),
               ),

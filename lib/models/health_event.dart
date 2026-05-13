@@ -1,16 +1,20 @@
+import 'alert_class.dart';
 import 'vital_reading.dart';
 import 'vital_status.dart';
 
 class HealthEvent {
   final VitalReading reading;
+
+  // Per-vital classifications (from VitalClassifier)
   final VitalStatus hrStatus;
   final VitalStatus spo2Status;
   final VitalStatus hrvStatus;
   final VitalStatus respirationStatus;
-  final VitalStatus overallStatus;
+
+  // Combined 4-class AI output
+  final AlertClass alertClass;
+  final bool vitalsHighRisk;
   final double confidenceScore;
-  final bool isEmergency;
-  final String statusMessage;
 
   const HealthEvent({
     required this.reading,
@@ -18,22 +22,27 @@ class HealthEvent {
     required this.spo2Status,
     required this.hrvStatus,
     required this.respirationStatus,
-    required this.overallStatus,
+    required this.alertClass,
+    required this.vitalsHighRisk,
     required this.confidenceScore,
-    required this.isEmergency,
-    required this.statusMessage,
   });
+
+  // Derived helpers kept for backwards compatibility with EmergencyTrigger etc.
+  bool get isEmergency => alertClass.isEmergency;
+  String get statusMessage => alertClass.message;
 
   Map<String, dynamic> toJson() => {
         'reading_id': reading.id,
+        'alert_class': alertClass.classNumber,
+        'alert_label': alertClass.label,
+        'vitals_high_risk': vitalsHighRisk,
+        'fall_detected': reading.fallDetected,
         'hr_status': hrStatus.name,
         'spo2_status': spo2Status.name,
         'hrv_status': hrvStatus.name,
         'respiration_status': respirationStatus.name,
-        'overall_status': overallStatus.name,
         'confidence_score': confidenceScore,
         'is_emergency': isEmergency,
-        'status_message': statusMessage,
         'analyzed_at': DateTime.now().toIso8601String(),
       };
 }

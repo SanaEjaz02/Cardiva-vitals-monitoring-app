@@ -73,7 +73,7 @@ class _VitalCardState extends State<VitalCard>
         border: Border.all(color: borderColor, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -118,7 +118,7 @@ class _VitalCardState extends State<VitalCard>
           // Value
           Text(
             widget.value,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -130,7 +130,7 @@ class _VitalCardState extends State<VitalCard>
             widget.unit.isNotEmpty
                 ? '${widget.label} Â· ${widget.unit}'
                 : widget.label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,

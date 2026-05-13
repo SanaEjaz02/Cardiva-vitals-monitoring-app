@@ -49,7 +49,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             color: AppColors.primaryLightest,
                             shape: BoxShape.circle,
                           ),
@@ -60,7 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        Text(
+                        const Text(
                           'CARDIVA',
                           style: TextStyle(
                             fontSize: 30,
@@ -69,7 +69,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             letterSpacing: 2,
                           ),
                         ),
-                        Text(
+                        const Text(
                           'Health Monitoring System',
                           style: TextStyle(
                             fontSize: 13,
@@ -81,7 +81,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  Text(
+                  const Text(
                     'Welcome back',
                     style: TextStyle(
                       fontSize: 22,
@@ -90,7 +90,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Sign in to your account',
                     style: TextStyle(
                         fontSize: 13, color: AppColors.textSecondary),
@@ -103,7 +103,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 14, color: AppColors.textPrimary),
                     validator: Validators.email,
                     decoration: _inputDeco(
@@ -119,7 +119,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _passwordCtrl,
                     obscureText: _obscure,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 14, color: AppColors.textPrimary),
                     validator: Validators.password,
                     decoration: _inputDeco(
@@ -162,7 +162,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 strokeWidth: 2.5,
                               ),
                             )
-                          : Text(
+                          : const Text(
                               'Sign In',
                               style: TextStyle(
                                 fontSize: 15,
@@ -179,7 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: () =>
                           Navigator.pushNamed(context, '/register'),
                       child: RichText(
-                        text: TextSpan(
+                        text: const TextSpan(
                           style: TextStyle(fontSize: 13),
                           children: [
                             TextSpan(
@@ -210,7 +210,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Widget _buildLabel(String text) => Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
           color: AppColors.textPrimary,
@@ -225,7 +225,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       InputDecoration(
         hintText: hint,
         hintStyle:
-            TextStyle(fontSize: 13, color: AppColors.textHint),
+            const TextStyle(fontSize: 13, color: AppColors.textHint),
         prefixIcon: Icon(icon, color: AppColors.primaryLight, size: 20),
         suffixIcon: suffix,
         filled: true,

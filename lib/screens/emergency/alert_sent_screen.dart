@@ -75,10 +75,10 @@ class _AlertSentScreenState extends State<AlertSentScreen>
               ),
               const SizedBox(height: 32),
               // Contact cards
-              _ContactAlertCard(
+              const _ContactAlertCard(
                   initial: 'A', name: 'Ayesha Khan', phone: '+92-333-1234567'),
               const SizedBox(height: 12),
-              _ContactAlertCard(
+              const _ContactAlertCard(
                   initial: 'M', name: 'Dr. M. Tariq', phone: '+92-301-9876543'),
               const SizedBox(height: 24),
               // SMS preview
@@ -165,7 +165,7 @@ class _ContactAlertCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              PillWidget('SMS Sent', variant: PillVariant.success),
+              const PillWidget('SMS Sent', variant: PillVariant.success),
               const SizedBox(height: 4),
               Text(timeStr, style: AppTextStyles.caption),
             ],

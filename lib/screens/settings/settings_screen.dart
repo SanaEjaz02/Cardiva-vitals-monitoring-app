@@ -61,7 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: [
             const SizedBox(height: 8),
             // Section 1 — Alerts & Thresholds
-            _SectionHeader('Alerts & Thresholds'),
+            const _SectionHeader('Alerts & Thresholds'),
             _SettingsCard(key: const ValueKey('card-alerts'), children: [
               _SliderRow(
                 label: 'Heart Rate Range',
@@ -121,7 +121,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ]),
             const SizedBox(height: 16),
             // Section 2 — Attendants
-            _SectionHeader('Attendants'),
+            const _SectionHeader('Attendants'),
             _SettingsCard(key: const ValueKey('card-attendants'), children: [
               ListTile(
                 contentPadding:
@@ -139,7 +139,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ]),
             const SizedBox(height: 16),
             // Section 3 — Privacy & Data
-            _SectionHeader('Privacy & Data'),
+            const _SectionHeader('Privacy & Data'),
             _SettingsCard(key: const ValueKey('card-privacy'), children: [
               _ToggleRow(
                 key: const ValueKey('toggle-encrypt'),
@@ -177,7 +177,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ]),
             const SizedBox(height: 16),
             // Section 4 — App Preferences
-            _SectionHeader('App Preferences'),
+            const _SectionHeader('App Preferences'),
             _SettingsCard(key: const ValueKey('card-prefs'), children: [
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -227,7 +227,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ]),
             const SizedBox(height: 16),
             // Developer section — demo emergency flow
-            _SectionHeader('Developer'),
+            const _SectionHeader('Developer'),
             _SettingsCard(key: const ValueKey('card-dev'), children: [
               ListTile(
                 contentPadding:
@@ -352,7 +352,7 @@ class _ToggleRow extends StatelessWidget {
           ? Text(subtitle!, style: AppTextStyles.caption)
           : null,
       value: value,
-      activeColor: AppColors.primary,
+      activeThumbColor: AppColors.primary,
       onChanged: onChanged,
     );
   }

@@ -29,7 +29,7 @@ class StatusBadge extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(_iconFor(status), color: color, size: 20),
@@ -49,7 +49,7 @@ class StatusBadge extends StatelessWidget {
                 ),
                 Text(
                   message,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                     fontWeight: FontWeight.w400,

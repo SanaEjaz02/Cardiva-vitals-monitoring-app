@@ -14,7 +14,7 @@ class DevicePairScreen extends StatefulWidget {
 class _DevicePairScreenState extends State<DevicePairScreen>
     with TickerProviderStateMixin {
   late List<AnimationController> _ringControllers;
-  bool _deviceFound = true; // show found state for demo
+  final bool _deviceFound = true; // show found state for demo
 
   @override
   void initState() {

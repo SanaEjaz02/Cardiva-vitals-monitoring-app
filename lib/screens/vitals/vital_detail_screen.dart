@@ -1,9 +1,8 @@
-import 'package:fl_chart/fl_chart.dart';
+﻿import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
-import '../../widgets/atoms/status_badge.dart';
 
 class VitalDetailScreen extends StatefulWidget {
   final String vitalId;
@@ -86,7 +85,7 @@ class _VitalDetailScreenState extends State<VitalDetailScreen>
                 style: AppTextStyles.body
                     .copyWith(color: AppColors.textSecondary, fontSize: 20)),
             const SizedBox(height: 8),
-            PillWidget('Normal', variant: PillVariant.success),
+            const PillWidget('Normal', variant: PillVariant.success),
             const SizedBox(height: 24),
             // Chart
             AnimatedBuilder(
@@ -104,8 +103,8 @@ class _VitalDetailScreenState extends State<VitalDetailScreen>
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      getDrawingHorizontalLine: (_) => FlLine(
-                        color: const Color(0xFFF0F2F7),
+                      getDrawingHorizontalLine: (_) => const FlLine(
+                        color: Color(0xFFF0F2F7),
                         strokeWidth: 1,
                       ),
                     ),
@@ -160,7 +159,7 @@ class _VitalDetailScreenState extends State<VitalDetailScreen>
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppColors.primary.withOpacity(0.08),
+                          color: AppColors.primary.withValues(alpha: 0.08),
                         ),
                       ),
                     ],
@@ -209,12 +208,12 @@ class _VitalDetailScreenState extends State<VitalDetailScreen>
             ),
             const SizedBox(height: 24),
             // Stats row
-            Row(
+            const Row(
               children: [
                 _StatCard(label: 'Min', value: '58'),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _StatCard(label: 'Max', value: '89'),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _StatCard(label: 'Avg', value: '72'),
               ],
             ),

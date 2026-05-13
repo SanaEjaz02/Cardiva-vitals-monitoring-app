@@ -19,7 +19,7 @@ class _HistoryScreenState extends State<HistoryScreen>
   _HistoryTab _tab = _HistoryTab.daily;
   DateTime _currentDate = DateTime(2025, 4, 25);
   int _currentMonth = 4;
-  int _currentYear = 2025;
+  final int _currentYear = 2025;
   late AnimationController _tabAnim;
   late Animation<double> _tabFade;
 
@@ -359,7 +359,7 @@ class _WeeklyMiniCard extends StatelessWidget {
           const SizedBox(height: 8),
           Expanded(
             child: SparkWidget(
-              dataPoints: [68, 70, 72, 71, 73, 72, 74],
+              dataPoints: const [68, 70, 72, 71, 73, 72, 74],
               color: color,
               width: double.infinity,
               height: 40,

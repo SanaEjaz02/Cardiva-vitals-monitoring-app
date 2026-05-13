@@ -1,4 +1,4 @@
-import '../core/constants/thresholds.dart';
+import '../models/alert_class.dart';
 import '../models/health_event.dart';
 import '../models/vital_reading.dart';
 import '../models/vital_status.dart';
@@ -9,51 +9,38 @@ class HealthStatusEngine {
   HealthStatusEngine._();
 
   static HealthEvent analyze(VitalReading reading) {
-    // Step 1: classify each vital
-    final hrStatus = VitalClassifier.classifyHeartRate(reading.heartRate, reading.activity);
+    // ── Step 1: Vital model — classify each vital independently ──────────────
+    final hrStatus =
+        VitalClassifier.classifyHeartRate(reading.heartRate, reading.activity);
     final spo2Status = VitalClassifier.classifySpO2(reading.spO2);
     final hrvStatus = VitalClassifier.classifyHRV(reading.hrv);
-    final rrStatus = VitalClassifier.classifyRespirationRate(reading.respirationRate);
+    final rrStatus =
+        VitalClassifier.classifyRespirationRate(reading.respirationRate);
 
-    final statuses = [hrStatus, spo2Status, hrvStatus, rrStatus];
+    // ── Step 2: Vitals model output — High Risk if any vital is warning/emergency
+    final vitalsHighRisk = [hrStatus, spo2Status, hrvStatus, rrStatus]
+        .any((s) => s == VitalStatus.warning || s == VitalStatus.emergency);
 
-    // Step 2: confidence score (must be calculated before overall status)
-    final confidence = ConfidenceEngine.calculate(statuses, reading.activity);
+    // ── Step 3: Fall model output ─────────────────────────────────────────────
+    final fallDetected = reading.fallDetected;
 
-    // Step 3: emergency decision tree (priority order)
-    VitalStatus overall;
-    bool isEmergency;
-    String message;
+    // ── Step 4: 4-class decision (2×2 matrix) ────────────────────────────────
+    // Class 1 — Fall=True  + Vitals=High Risk → EMERGENCY
+    // Class 2 — Fall=True  + Vitals=Low Risk  → FALL ALERT
+    // Class 3 — Fall=False + Vitals=High Risk → VITALS ALERT
+    // Class 4 — Fall=False + Vitals=Low Risk  → NORMAL
+    final alertClass = switch ((fallDetected, vitalsHighRisk)) {
+      (true, true) => AlertClass.emergency,
+      (true, false) => AlertClass.fallAlert,
+      (false, true) => AlertClass.vitalsAlert,
+      _ => AlertClass.normal,
+    };
 
-    final hasEmergencyVital = statuses.any((s) => s == VitalStatus.emergency);
-    final hasWarningVital = statuses.any((s) => s == VitalStatus.warning);
-    final hasStableVital = statuses.any((s) => s == VitalStatus.stable);
-
-    if (reading.fallDetected) {
-      overall = VitalStatus.emergency;
-      isEmergency = true;
-      message = 'Fall detected. Emergency alert triggered.';
-    } else if (hasEmergencyVital && confidence >= VitalThresholds.emergencyConfidenceGate) {
-      overall = VitalStatus.emergency;
-      isEmergency = true;
-      message = 'Critical vitals detected. Emergency alert triggered.';
-    } else if (hasEmergencyVital) {
-      overall = VitalStatus.warning;
-      isEmergency = false;
-      message = 'Abnormal readings detected. Monitoring closely.';
-    } else if (hasWarningVital) {
-      overall = VitalStatus.warning;
-      isEmergency = false;
-      message = 'Some vitals require attention.';
-    } else if (hasStableVital) {
-      overall = VitalStatus.stable;
-      isEmergency = false;
-      message = 'Vitals are slightly outside normal range.';
-    } else {
-      overall = VitalStatus.normal;
-      isEmergency = false;
-      message = 'All vitals are normal.';
-    }
+    // ── Step 5: Confidence score (for display) ────────────────────────────────
+    final confidence = ConfidenceEngine.calculate(
+      [hrStatus, spo2Status, hrvStatus, rrStatus],
+      reading.activity,
+    );
 
     return HealthEvent(
       reading: reading,
@@ -61,10 +48,9 @@ class HealthStatusEngine {
       spo2Status: spo2Status,
       hrvStatus: hrvStatus,
       respirationStatus: rrStatus,
-      overallStatus: overall,
+      alertClass: alertClass,
+      vitalsHighRisk: vitalsHighRisk,
       confidenceScore: confidence,
-      isEmergency: isEmergency,
-      statusMessage: message,
     );
   }
 }

@@ -66,6 +66,45 @@ class VitalsScreen extends StatelessWidget {
                 },
               ),
             ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: GestureDetector(
+                onTap: () => Navigator.pushNamed(context, AppRouter.vitalsAi),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgWhite,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.shadowSm,
+                        blurRadius: 16,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.analytics_rounded, color: AppColors.primary),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('AI Vitals Analysis', style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 4),
+                            Text('Analyze live band data and trigger emergency response.', style: AppTextStyles.caption),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -76,7 +115,7 @@ class VitalsScreen extends StatelessWidget {
 
 class _VitalListCard extends StatelessWidget {
   final _VitalRow vital;
-  const _VitalListCard({super.key, required this.vital});
+  const _VitalListCard({required this.vital});
 
   // Demo spark data
   List<double> _sparkData() {

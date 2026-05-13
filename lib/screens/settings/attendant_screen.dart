@@ -312,7 +312,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _relationship,
+                  initialValue: _relationship,
                   hint: Text('Relationship',
                       style: AppTextStyles.body
                           .copyWith(color: AppColors.textSecondary)),

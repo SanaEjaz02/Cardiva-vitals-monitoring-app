@@ -21,7 +21,7 @@ class EmergencyScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        title: Text(
+        title: const Text(
           'ðŸš¨ CARDIVA EMERGENCY',
           style: TextStyle(
               fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
@@ -40,7 +40,7 @@ class EmergencyScreen extends StatelessWidget {
             Center(
               child: Text(
                 'Detected at ${DateFormatter.dateTime(r.timestamp)}',
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary),
               ),
             ),
@@ -52,7 +52,7 @@ class EmergencyScreen extends StatelessWidget {
               child: Column(
                 children: [
                   if (r.fallDetected)
-                    _VitalRow(
+                    const _VitalRow(
                       icon: Icons.warning_amber_rounded,
                       label: 'Fall Detected',
                       status: VitalStatus.emergency,
@@ -90,7 +90,7 @@ class EmergencyScreen extends StatelessWidget {
                 children: [
                   Text(
                     '${event.confidenceScore.toStringAsFixed(1)}%',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.w800,
                       color: AppColors.emergency,
@@ -102,7 +102,7 @@ class EmergencyScreen extends StatelessWidget {
                       event.confidenceScore >= 70
                           ? 'High confidence â€” alert is real'
                           : 'Triggered by fall detection',
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 12, color: AppColors.textSecondary),
                     ),
                   ),
@@ -112,7 +112,7 @@ class EmergencyScreen extends StatelessWidget {
             const SizedBox(height: 14),
 
             // â”€â”€ SMS status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            _SectionCard(
+            const _SectionCard(
               title: 'Response Actions',
               child: Column(
                 children: [
@@ -140,7 +140,7 @@ class EmergencyScreen extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).pop(),
               icon: const Icon(Icons.check_circle_outline_rounded),
-              label: Text(
+              label: const Text(
                 'Mark as False Alarm & Dismiss',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
@@ -157,7 +157,7 @@ class EmergencyScreen extends StatelessWidget {
             // â”€â”€ Dismiss â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(
+              child: const Text(
                 'Dismiss',
                 style: TextStyle(color: AppColors.textSecondary),
               ),
@@ -189,7 +189,7 @@ class _SectionCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -223,7 +223,7 @@ class _VitalRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(label,
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 13, color: AppColors.textPrimary)),
           ),
           Container(
@@ -265,7 +265,7 @@ class _ActionRow extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(label,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 12, color: AppColors.textPrimary)),
             ),
             Icon(

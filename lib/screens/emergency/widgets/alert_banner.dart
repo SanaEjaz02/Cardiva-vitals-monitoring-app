@@ -45,7 +45,7 @@ class _AlertBannerState extends State<AlertBanner>
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: AppColors.emergency.withOpacity(0.35),
+              color: AppColors.emergency.withValues(alpha: 0.35),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -59,7 +59,7 @@ class _AlertBannerState extends State<AlertBanner>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'EMERGENCY',
                     style: TextStyle(
                       color: Colors.white,
@@ -71,7 +71,7 @@ class _AlertBannerState extends State<AlertBanner>
                   Text(
                     widget.message,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
