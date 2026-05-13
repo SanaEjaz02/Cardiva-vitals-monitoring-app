@@ -1,16 +1,42 @@
 import 'package:url_launcher/url_launcher.dart';
 import '../core/errors/app_exceptions.dart';
 
-/// Sends SMS by opening the device's native SMS app with a pre-filled message.
-/// No API key or paid service required.
 class SmsService {
   SmsService._();
 
+  /// Strips a phone number down to digits only (E.164 without the '+').
+  /// E.g. "+92-333-1234567" → "923331234567"
+  static String _e164Digits(String raw) =>
+      raw.replaceAll(RegExp(r'[^\d]'), '');
+
+  /// Tries WhatsApp first, falls back to native SMS.
+  /// WhatsApp requires digits-only E.164 (no '+'), e.g. "923331234567".
+  static Future<void> sendAlert({
+    required String to,
+    required String message,
+  }) async {
+    final digits = _e164Digits(to);
+
+    // Try WhatsApp
+    if (digits.isNotEmpty) {
+      final waUri = Uri.parse(
+        'https://wa.me/$digits?text=${Uri.encodeComponent(message)}',
+      );
+      if (await canLaunchUrl(waUri)) {
+        await launchUrl(waUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    // Fall back to native SMS
+    await sendSms(to: to, message: message);
+  }
+
+  /// Native SMS (sms: scheme) — opens the device's SMS app.
   static Future<void> sendSms({
     required String to,
     required String message,
   }) async {
-    // Sanitise the phone number — remove spaces/dashes for the URI
     final phone = to.replaceAll(RegExp(r'[\s\-()]'), '');
     final uri = Uri(
       scheme: 'sms',

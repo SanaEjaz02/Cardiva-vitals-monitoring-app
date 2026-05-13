@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alert_class.dart';
 import '../models/health_event.dart';
 import '../services/cloud_service.dart';
@@ -8,11 +11,43 @@ import '../services/sms_service.dart';
 class EmergencyTrigger {
   EmergencyTrigger._();
 
+  /// Loads all registered emergency contacts and SMS-enabled attendants
+  /// from SharedPreferences, scoped to the current Firebase user.
+  static Future<List<String>> _loadContactPhones() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    final phones = <String>[];
+
+    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
+    if (ecRaw != null) {
+      try {
+        final list = jsonDecode(ecRaw) as List;
+        for (final j in list) {
+          final phone = (j['phone'] as String? ?? '').trim();
+          if (phone.isNotEmpty) phones.add(phone);
+        }
+      } catch (_) {}
+    }
+
+    final attRaw = prefs.getString('attendants_${uid}_v1');
+    if (attRaw != null) {
+      try {
+        final list = jsonDecode(attRaw) as List;
+        for (final j in list) {
+          final notifySms = j['notifyViaSms'] as bool? ?? true;
+          final phone = (j['phone'] as String? ?? '').trim();
+          if (notifySms && phone.isNotEmpty) phones.add(phone);
+        }
+      } catch (_) {}
+    }
+
+    return phones;
+  }
+
   static Future<void> handle({
     required HealthEvent event,
     required String userName,
     required String userPhone,
-    required String contactPhone,
     required String userId,
   }) async {
     if (!event.isEmergency) return;
@@ -30,8 +65,7 @@ class EmergencyTrigger {
     // Step 2: Build SMS message
     final r = event.reading;
     final alertType = r.fallDetected ? 'FALL DETECTED' : 'CRITICAL VITALS';
-    final message = '''
-⚠️ CARDIVA $alertType ALERT ⚠️
+    final message = '''⚠️ CARDIVA $alertType ALERT ⚠️
 Patient: $userName
 Status: ${event.alertClass.label}
 Fall Detected: ${r.fallDetected ? 'YES' : 'No'}
@@ -43,13 +77,12 @@ Vitals at time of alert:
 • Respiration: ${r.respirationRate.toStringAsFixed(1)} br/min (${event.respirationStatus.name})
 • Activity: ${r.activity.name}
 
-📍 $mapsLink
-''';
+📍 $mapsLink''';
 
-    // Step 3: Open SMS app for the primary emergency contact (url_launcher)
-    // Fire-and-forget; user confirms and sends from the native SMS app.
-    if (contactPhone.isNotEmpty) {
-      SmsService.sendSms(to: contactPhone, message: message).catchError((_) {});
+    // Step 3: Send via WhatsApp (falls back to SMS) to all registered contacts
+    final phones = await _loadContactPhones();
+    for (final phone in phones) {
+      SmsService.sendAlert(to: phone, message: message).catchError((_) {});
     }
 
     // Step 4: Log alert to cloud (non-blocking)

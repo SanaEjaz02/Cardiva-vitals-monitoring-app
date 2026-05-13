@@ -31,7 +31,6 @@ final healthEventProvider = Provider<AsyncValue<HealthEvent>>((ref) {
 
     // Side-effects — all fire-and-forget; never block UI
     final user = ref.read(userProvider);
-    final contacts = ref.read(emergencyContactsProvider);
     final userId = user?.id ?? 'demo-user-001';
     final cloud = ref.read(cloudServiceProvider);
 
@@ -39,12 +38,10 @@ final healthEventProvider = Provider<AsyncValue<HealthEvent>>((ref) {
     cloud.saveHealthEvent(event, userId).catchError((_) {});
 
     if (event.isEmergency) {
-      final primary = ref.read(emergencyContactsProvider.notifier).primary;
       EmergencyTrigger.handle(
         event: event,
         userName: user?.name ?? 'Patient',
         userPhone: user?.phone ?? '',
-        contactPhone: primary?.phone ?? contacts.firstOrNull?.phone ?? '',
         userId: userId,
       ).catchError((_) {});
     }

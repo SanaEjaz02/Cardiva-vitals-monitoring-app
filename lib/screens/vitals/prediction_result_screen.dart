@@ -72,13 +72,10 @@ class _PredictionResultScreenState
     setState(() => _alertSending = true);
     try {
       final user = ref.read(userProvider);
-      final contacts = ref.read(emergencyContactsProvider);
-      final primary = ref.read(emergencyContactsProvider.notifier).primary;
       await EmergencyTrigger.handle(
         event: _buildHealthEvent(),
         userName: user?.name ?? 'Patient',
         userPhone: user?.phone ?? '',
-        contactPhone: primary?.phone ?? contacts.firstOrNull?.phone ?? '',
         userId: user?.id ?? 'demo-user-001',
       );
       if (mounted) setState(() => _alertSent = true);

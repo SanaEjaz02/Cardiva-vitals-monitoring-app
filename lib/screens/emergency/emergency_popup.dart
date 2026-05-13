@@ -161,7 +161,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
         '— Sent by Cardiva Health Monitor';
 
     for (final contact in _contacts) {
-      SmsService.sendSms(to: contact.phone, message: message)
+      SmsService.sendAlert(to: contact.phone, message: message)
           .catchError((_) {});
     }
 
