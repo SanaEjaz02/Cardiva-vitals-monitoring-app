@@ -13,7 +13,11 @@ import '../report/health_report_screen.dart';
 import 'prediction_result_screen.dart';
 
 class VitalsAiScreen extends ConsumerStatefulWidget {
-  const VitalsAiScreen({super.key});
+  /// When embedded in the main PageView, provide this so the back button
+  /// animates back to Dashboard instead of popping the navigator.
+  final VoidCallback? onBack;
+
+  const VitalsAiScreen({super.key, this.onBack});
 
   @override
   ConsumerState<VitalsAiScreen> createState() => _VitalsAiScreenState();
@@ -348,7 +352,8 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_rounded,
             size: 20, color: AppColors.textPrimary),
-        onPressed: () => Navigator.pop(context),
+        onPressed: () =>
+            widget.onBack != null ? widget.onBack!() : Navigator.pop(context),
       ),
       title: Text('AI Monitor', style: AppTextStyles.h1),
       actions: [

@@ -42,4 +42,24 @@ class Attendant {
     }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'relationship': relationship,
+        'phone': phone,
+        'email': email,
+        'notifyViaSms': notifyViaSms,
+        'shareLocation': shareLocation,
+      };
+
+  factory Attendant.fromJson(Map<String, dynamic> j) => Attendant(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        relationship: j['relationship'] as String,
+        phone: j['phone'] as String,
+        email: j['email'] as String?,
+        notifyViaSms: j['notifyViaSms'] as bool? ?? true,
+        shareLocation: j['shareLocation'] as bool? ?? true,
+      );
 }

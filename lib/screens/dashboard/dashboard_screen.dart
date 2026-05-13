@@ -9,7 +9,8 @@ import '../../widgets/atoms/vital_animations.dart';
 
 class DashboardScreen extends StatefulWidget {
   final ValueChanged<int>? onSwitchTab;
-  const DashboardScreen({super.key, this.onSwitchTab});
+  final VoidCallback? onOpenAi;
+  const DashboardScreen({super.key, this.onSwitchTab, this.onOpenAi});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -83,7 +84,42 @@ class _DashboardScreenState extends State<DashboardScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 18),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
+                      if (widget.onOpenAi != null)
+                        GestureDetector(
+                          onTap: widget.onOpenAi,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.arrow_back_ios_rounded,
+                                    size: 11, color: Colors.white70),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'AI Monitor',
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.monitor_heart_outlined,
+                                    size: 13, color: Colors.white70),
+                              ],
+                            ),
+                          ),
+                        ),
                       _TopBar(
                         greeting: _greeting,
                         pulseController: _pulseController,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,7 +18,11 @@ class EmergencyContactsScreen extends StatefulWidget {
 class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   List<_Contact> _contacts = [];
   bool _loading = true;
-  static const _kContacts = 'emergency_contacts_v1';
+
+  String get _storageKey {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return 'emergency_contacts_${uid}_v1';
+  }
 
   @override
   void initState() {
@@ -27,7 +32,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kContacts);
+    final raw = prefs.getString(_storageKey);
     if (raw != null) {
       final list = jsonDecode(raw) as List;
       if (mounted) {
@@ -39,31 +44,14 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         });
       }
     } else {
-      if (mounted) {
-        setState(() {
-          _contacts = [
-            _Contact(
-                id: const Uuid().v4(),
-                name: 'Ayesha Khan',
-                phone: '+92-333-1234567',
-                relationship: 'Family'),
-            _Contact(
-                id: const Uuid().v4(),
-                name: 'Dr. Ahmed Ali',
-                phone: '+92-300-9876543',
-                relationship: 'Doctor'),
-          ];
-          _loading = false;
-        });
-        await _save();
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _kContacts,
+        _storageKey,
         jsonEncode(
             _contacts.map((c) => c.toJson()).toList()));
   }

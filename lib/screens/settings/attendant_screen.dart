@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -13,17 +16,43 @@ class AttendantScreen extends StatefulWidget {
 }
 
 class _AttendantScreenState extends State<AttendantScreen> {
-  final List<Attendant> _attendants = [
-    const Attendant(
-      id: '1',
-      name: 'Ayesha Khan',
-      relationship: 'Family',
-      phone: '+92-333-1234567',
-      email: 'ayesha@email.com',
-      notifyViaSms: true,
-      shareLocation: true,
-    ),
-  ];
+  List<Attendant> _attendants = [];
+  bool _loading = true;
+
+  String get _storageKey {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return 'attendants_${uid}_v1';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+    if (raw != null) {
+      final list = jsonDecode(raw) as List;
+      if (mounted) {
+        setState(() {
+          _attendants = list
+              .map((j) => Attendant.fromJson(j as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+      }
+    } else {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _storageKey, jsonEncode(_attendants.map((a) => a.toJson()).toList()));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,55 +72,57 @@ class _AttendantScreenState extends State<AttendantScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            // Info card
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.bgLight,
-                borderRadius: BorderRadius.circular(12),
-                border: const Border(
-                  left: BorderSide(color: AppColors.primary, width: 3),
-                ),
-              ),
-              child: Text(
-                'Attendants can monitor your vitals and will be notified during emergencies. Different from emergency contacts.',
-                style: AppTextStyles.caption,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgLight,
+                      borderRadius: BorderRadius.circular(12),
+                      border: const Border(
+                        left: BorderSide(color: AppColors.primary, width: 3),
+                      ),
+                    ),
+                    child: Text(
+                      'Attendants can monitor your vitals and will be notified during emergencies. Different from emergency contacts.',
+                      style: AppTextStyles.caption,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_attendants.isEmpty)
+                    _EmptyState(onAdd: () => _showAttendantSheet(context, null))
+                  else
+                    ..._attendants.asMap().entries.map((e) {
+                      final i = e.key;
+                      final att = e.value;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _AttendantCard(
+                          attendant: att,
+                          onEdit: () => _showAttendantSheet(context, att),
+                          onDelete: () => _confirmDelete(context, i),
+                          onToggleSms: (v) {
+                            setState(() =>
+                                _attendants[i] = att.copyWith(notifyViaSms: v));
+                            _save();
+                          },
+                          onToggleLocation: (v) {
+                            setState(() =>
+                                _attendants[i] = att.copyWith(shareLocation: v));
+                            _save();
+                          },
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 100),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (_attendants.isEmpty)
-              _EmptyState(
-                  onAdd: () => _showAttendantSheet(context, null))
-            else
-              ..._attendants.asMap().entries.map((e) {
-                final i = e.key;
-                final att = e.value;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _AttendantCard(
-                    attendant: att,
-                    onEdit: () => _showAttendantSheet(context, att),
-                    onDelete: () => _confirmDelete(context, i),
-                    onToggleSms: (v) => setState(() {
-                      _attendants[i] =
-                          att.copyWith(notifyViaSms: v);
-                    }),
-                    onToggleLocation: (v) => setState(() {
-                      _attendants[i] =
-                          att.copyWith(shareLocation: v);
-                    }),
-                  ),
-                );
-              }),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
     );
   }
 
@@ -111,6 +142,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
               _attendants.add(a);
             }
           });
+          _save();
         },
       ),
     );
@@ -133,6 +165,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
             onPressed: () {
               Navigator.pop(ctx);
               setState(() => _attendants.removeAt(index));
+              _save();
             },
             child: Text('Remove',
                 style: AppTextStyles.body.copyWith(color: AppColors.danger)),
@@ -186,8 +219,7 @@ class _AttendantCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(attendant.name, style: AppTextStyles.h2),
-                    Text(attendant.relationship,
-                        style: AppTextStyles.caption),
+                    Text(attendant.relationship, style: AppTextStyles.caption),
                     Text(attendant.phone, style: AppTextStyles.caption),
                   ],
                 ),
@@ -224,7 +256,7 @@ class _AttendantCard extends StatelessWidget {
               Switch.adaptive(
                 value: attendant.notifyViaSms,
                 onChanged: onToggleSms,
-                activeColor: AppColors.primary,
+                activeTrackColor: AppColors.primary,
               ),
             ],
           ),
@@ -252,9 +284,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
   late bool _sms;
   late bool _location;
 
-  static const _rels = [
-    'Family', 'Friend', 'Doctor', 'Caregiver', 'Other'
-  ];
+  static const _rels = ['Family', 'Friend', 'Doctor', 'Caregiver', 'Other'];
 
   @override
   void initState() {
@@ -333,8 +363,8 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                      hintText: 'Email (optional)'),
+                  decoration:
+                      const InputDecoration(hintText: 'Email (optional)'),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -344,7 +374,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                     Switch.adaptive(
                       value: _sms,
                       onChanged: (v) => setState(() => _sms = v),
-                      activeColor: AppColors.primary,
+                      activeTrackColor: AppColors.primary,
                     ),
                   ],
                 ),
@@ -355,7 +385,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                     Switch.adaptive(
                       value: _location,
                       onChanged: (v) => setState(() => _location = v),
-                      activeColor: AppColors.primary,
+                      activeTrackColor: AppColors.primary,
                     ),
                   ],
                 ),
