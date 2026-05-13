@@ -6,7 +6,8 @@ import '../../widgets/atoms/spark_widget.dart';
 import '../../router/app_router.dart';
 
 class VitalsScreen extends StatelessWidget {
-  const VitalsScreen({super.key});
+  final VoidCallback? onOpenAi;
+  const VitalsScreen({super.key, this.onOpenAi});
 
   static const _vitals = [
     _VitalRow('Heart Rate', Icons.favorite_rounded, '72', 'bpm',
@@ -32,26 +33,66 @@ class VitalsScreen extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text('Vitals', style: AppTextStyles.h1),
-                  ),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                        ),
+                      Expanded(child: Text('Vitals', style: AppTextStyles.h1)),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('Updated 3s ago', style: AppTextStyles.caption),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      Text('Updated 3s ago', style: AppTextStyles.caption),
                     ],
                   ),
+                  if (onOpenAi != null) ...[
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: onOpenAi,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryBg,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.arrow_back_ios_rounded,
+                                size: 11,
+                                color: AppColors.primary.withValues(alpha: 0.8)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'AI Monitor',
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.monitor_heart_outlined,
+                                size: 13, color: AppColors.primary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -70,7 +111,7 @@ class VitalsScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GestureDetector(
-                onTap: () => Navigator.pushNamed(context, AppRouter.vitalsAi),
+                onTap: onOpenAi ?? () => Navigator.pushNamed(context, AppRouter.vitalsAi),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
                   decoration: BoxDecoration(

@@ -1,4 +1,5 @@
-﻿import 'dart:io';
+﻿import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,6 +21,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   User? get _user => AuthService.currentUser;
   String? _photoPath;
+  int _contactCount = 0;
+  int _attendantCount = 0;
 
   String get _displayName => _user?.displayName ?? 'Patient';
   String get _email => _user?.email ?? '—';
@@ -45,14 +48,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPhoto();
+    _loadData();
   }
 
-  Future<void> _loadPhoto() async {
+  Future<void> _loadData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
     final prefs = await SharedPreferences.getInstance();
+
+    // Photo
     final path = prefs.getString('profile_photo_path');
     if (path != null && await File(path).exists() && mounted) {
       setState(() => _photoPath = path);
+    }
+
+    // Emergency contacts count
+    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
+    int ecCount = 0;
+    if (ecRaw != null) {
+      try {
+        ecCount = (jsonDecode(ecRaw) as List).length;
+      } catch (_) {}
+    }
+
+    // Attendant count
+    final attRaw = prefs.getString('attendants_${uid}_v1');
+    int attCount = 0;
+    if (attRaw != null) {
+      try {
+        attCount = (jsonDecode(attRaw) as List).length;
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        _contactCount = ecCount;
+        _attendantCount = attCount;
+      });
     }
   }
 
@@ -229,16 +260,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ProfileRow(
                     icon: Icons.contacts_rounded,
                     label: 'Emergency Contacts',
-                    badge: const PillWidget('2', variant: PillVariant.primary),
-                    onTap: () => Navigator.pushNamed(
-                        context, AppRouter.emergencyContacts),
+                    badge: PillWidget('$_contactCount',
+                        variant: PillVariant.primary),
+                    onTap: () async {
+                      await Navigator.pushNamed(
+                          context, AppRouter.emergencyContacts);
+                      if (mounted) _loadData();
+                    },
                   ),
                   _ProfileRow(
                     icon: Icons.people_rounded,
                     label: 'Attendants',
-                    badge: const PillWidget('1', variant: PillVariant.primary),
-                    onTap: () => Navigator.pushNamed(
-                        context, AppRouter.settingsAttendants),
+                    badge: PillWidget('$_attendantCount',
+                        variant: PillVariant.primary),
+                    onTap: () async {
+                      await Navigator.pushNamed(
+                          context, AppRouter.settingsAttendants);
+                      if (mounted) _loadData();
+                    },
                   ),
                   _ProfileRow(
                     icon: Icons.tune_rounded,
@@ -262,8 +301,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ProfileRow(
                     icon: Icons.watch_rounded,
                     label: 'Device Status',
-                    badge:
-                        const PillWidget('Connected', variant: PillVariant.success),
+                    badge: const PillWidget('Disconnected',
+                        variant: PillVariant.outline),
                     onTap: () {},
                   ),
                   _ProfileRow(
@@ -544,9 +583,10 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           setState(() => _saving = true);
                           final resultPath =
                               _photoRemoved ? null : _photoPath;
+                          final nav = Navigator.of(context);
                           await widget.onSave(
                               _nameCtrl.text.trim(), resultPath);
-                          if (mounted) Navigator.pop(context);
+                          if (mounted) nav.pop();
                         },
                   child: _saving
                       ? const SizedBox(

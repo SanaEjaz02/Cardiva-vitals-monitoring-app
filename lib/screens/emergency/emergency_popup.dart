@@ -1,8 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/sms_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../widgets/atoms/skeleton_loader.dart';
 import '../../router/app_router.dart';
 
 class EmergencyPopup extends StatefulWidget {
@@ -54,6 +57,9 @@ class _EmergencyPopupState extends State<EmergencyPopup>
   bool _alertSent = false;
   bool _show1122 = false;
 
+  // Loaded from SharedPreferences (user-scoped)
+  List<_AlertContact> _contacts = [];
+
   late List<AnimationController> _ringControllers;
 
   String get _bodyText {
@@ -83,7 +89,45 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       });
       return ctrl;
     });
+    _loadContacts();
     _startCountdown();
+  }
+
+  Future<void> _loadContacts() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    final contacts = <_AlertContact>[];
+
+    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
+    if (ecRaw != null) {
+      final list = jsonDecode(ecRaw) as List;
+      for (final j in list) {
+        final phone = (j['phone'] as String? ?? '').trim();
+        if (phone.isNotEmpty) {
+          contacts.add(_AlertContact(
+            name: j['name'] as String? ?? 'Contact',
+            phone: phone,
+          ));
+        }
+      }
+    }
+
+    final attRaw = prefs.getString('attendants_${uid}_v1');
+    if (attRaw != null) {
+      final list = jsonDecode(attRaw) as List;
+      for (final j in list) {
+        final notifySms = j['notifyViaSms'] as bool? ?? true;
+        final phone = (j['phone'] as String? ?? '').trim();
+        if (notifySms && phone.isNotEmpty) {
+          contacts.add(_AlertContact(
+            name: j['name'] as String? ?? 'Attendant',
+            phone: phone,
+          ));
+        }
+      }
+    }
+
+    if (mounted) setState(() => _contacts = contacts);
   }
 
   void _startCountdown() {
@@ -103,7 +147,24 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       _alertSent = true;
       _countdown = 0;
     });
-    // Simulate ETA check — show 1122 prompt after 2s
+
+    final userName =
+        FirebaseAuth.instance.currentUser?.displayName ?? 'Patient';
+    final typeLabel = widget.triggerType == 'fall'
+        ? 'FALL DETECTED'
+        : widget.triggerType == 'manual'
+            ? 'SOS ACTIVATED'
+            : 'CRITICAL VITALS';
+    final message = '🚨 CARDIVA EMERGENCY — $typeLabel\n'
+        'Patient: $userName\n'
+        'Needs immediate assistance. Please respond now.\n'
+        '— Sent by Cardiva Health Monitor';
+
+    for (final contact in _contacts) {
+      SmsService.sendSms(to: contact.phone, message: message)
+          .catchError((_) {});
+    }
+
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _show1122 = true);
     });
@@ -202,8 +263,8 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                 ),
                 const SizedBox(height: 12),
                 Text('Emergency Detected',
-                    style: AppTextStyles.h1
-                        .copyWith(color: AppColors.danger)),
+                    style:
+                        AppTextStyles.h1.copyWith(color: AppColors.danger)),
                 const SizedBox(height: 8),
                 Text(_bodyText,
                     style: AppTextStyles.body
@@ -213,8 +274,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                 // Countdown or sent state
                 if (!_alertSent) ...[
                   _AnimatedCountdown(seconds: _countdown),
-                  Text('seconds remaining',
-                      style: AppTextStyles.caption),
+                  Text('seconds remaining', style: AppTextStyles.caption),
                 ] else ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -239,8 +299,8 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                     ),
                     child: Text(
                       'Nearest attendant is 23 minutes away. Call 1122 emergency services?',
-                      style: AppTextStyles.body
-                          .copyWith(color: AppColors.danger),
+                      style:
+                          AppTextStyles.body.copyWith(color: AppColors.danger),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -300,42 +360,8 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                   ),
                 ],
                 const SizedBox(height: 16),
-                // Will notify card
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgLight,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundColor: AppColors.primaryBg,
-                        child: Text('A',
-                            style: AppTextStyles.body
-                                .copyWith(color: AppColors.primary)),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Will notify:',
-                                style: AppTextStyles.caption),
-                            Text('Ayesha Khan',
-                                style: AppTextStyles.h2),
-                            Text('+92-333-1234567',
-                                style: AppTextStyles.caption),
-                            const SizedBox(height: 4),
-                            const SkeletonLoader(
-                                width: 140, height: 10, radius: 4),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Will notify card — shows real contacts
+                _buildNotifyCard(),
               ],
             ),
           ),
@@ -343,6 +369,77 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       ),
     );
   }
+
+  Widget _buildNotifyCard() {
+    if (_contacts.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bgLight,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded,
+                color: AppColors.textSecondary, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No emergency contacts set. Add contacts in Settings.',
+                style: AppTextStyles.caption,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final primary = _contacts.first;
+    final extra = _contacts.length - 1;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.bgLight,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: AppColors.primaryBg,
+            child: Text(
+              primary.name.isNotEmpty ? primary.name[0].toUpperCase() : '?',
+              style: AppTextStyles.body.copyWith(color: AppColors.primary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Will notify:', style: AppTextStyles.caption),
+                Text(primary.name, style: AppTextStyles.h2),
+                Text(primary.phone, style: AppTextStyles.caption),
+                if (extra > 0)
+                  Text(
+                    '+$extra more contact${extra > 1 ? 's' : ''}',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.primary),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlertContact {
+  final String name;
+  final String phone;
+  const _AlertContact({required this.name, required this.phone});
 }
 
 class _AnimatedCountdown extends StatefulWidget {

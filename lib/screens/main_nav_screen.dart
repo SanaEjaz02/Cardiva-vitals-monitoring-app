@@ -80,7 +80,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
         children: [
           VitalsAiScreen(onBack: _backToDashboard),
           DashboardScreen(onSwitchTab: _switchTab, onOpenAi: _goToAi),
-          const VitalsScreen(),
+          VitalsScreen(onOpenAi: _goToAi),
           const HistoryScreen(),
           const ProfileScreen(),
         ],

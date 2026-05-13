@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
@@ -17,6 +20,8 @@ class _AlertSentScreenState extends State<AlertSentScreen>
   late Animation<double> _checkScale;
   bool _smsExpanded = false;
 
+  List<_NotifiedContact> _contacts = [];
+
   @override
   void initState() {
     super.initState();
@@ -28,6 +33,44 @@ class _AlertSentScreenState extends State<AlertSentScreen>
       CurvedAnimation(parent: _checkController, curve: Curves.elasticOut),
     );
     _checkController.forward();
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    final contacts = <_NotifiedContact>[];
+
+    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
+    if (ecRaw != null) {
+      final list = jsonDecode(ecRaw) as List;
+      for (final j in list) {
+        final phone = (j['phone'] as String? ?? '').trim();
+        if (phone.isNotEmpty) {
+          contacts.add(_NotifiedContact(
+            name: j['name'] as String? ?? 'Contact',
+            phone: phone,
+          ));
+        }
+      }
+    }
+
+    final attRaw = prefs.getString('attendants_${uid}_v1');
+    if (attRaw != null) {
+      final list = jsonDecode(attRaw) as List;
+      for (final j in list) {
+        final notifySms = j['notifyViaSms'] as bool? ?? true;
+        final phone = (j['phone'] as String? ?? '').trim();
+        if (notifySms && phone.isNotEmpty) {
+          contacts.add(_NotifiedContact(
+            name: j['name'] as String? ?? 'Attendant',
+            phone: phone,
+          ));
+        }
+      }
+    }
+
+    if (mounted) setState(() => _contacts = contacts);
   }
 
   @override
@@ -38,6 +81,9 @@ class _AlertSentScreenState extends State<AlertSentScreen>
 
   @override
   Widget build(BuildContext context) {
+    final userName =
+        FirebaseAuth.instance.currentUser?.displayName ?? 'Patient';
+
     return Scaffold(
       backgroundColor: AppColors.bgWhite,
       body: SafeArea(
@@ -46,7 +92,7 @@ class _AlertSentScreenState extends State<AlertSentScreen>
           child: Column(
             children: [
               const SizedBox(height: 48),
-              // Check circle
+              // Check circle animation
               AnimatedBuilder(
                 animation: _checkScale,
                 builder: (_, __) => Transform.scale(
@@ -57,7 +103,8 @@ class _AlertSentScreenState extends State<AlertSentScreen>
                     decoration: BoxDecoration(
                       color: const Color(0xFFDCFCE7),
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.success, width: 2),
+                      border:
+                          Border.all(color: AppColors.success, width: 2),
                     ),
                     child: const Icon(Icons.check_rounded,
                         color: AppColors.success, size: 48),
@@ -68,24 +115,54 @@ class _AlertSentScreenState extends State<AlertSentScreen>
               Text('Alert Sent', style: AppTextStyles.h1),
               const SizedBox(height: 8),
               Text(
-                'Your emergency contacts and attendants have been notified.',
+                _contacts.isEmpty
+                    ? 'No emergency contacts were notified. Add contacts in Settings.'
+                    : 'Your emergency contacts and attendants have been notified.',
                 style: AppTextStyles.body
                     .copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
               // Contact cards
-              const _ContactAlertCard(
-                  initial: 'A', name: 'Ayesha Khan', phone: '+92-333-1234567'),
-              const SizedBox(height: 12),
-              const _ContactAlertCard(
-                  initial: 'M', name: 'Dr. M. Tariq', phone: '+92-301-9876543'),
+              if (_contacts.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgLight,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.contacts_outlined,
+                          color: AppColors.textSecondary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Add emergency contacts in Profile → Emergency Contacts',
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ..._contacts.map((c) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _ContactAlertCard(
+                        initial: c.name.isNotEmpty
+                            ? c.name[0].toUpperCase()
+                            : '?',
+                        name: c.name,
+                        phone: c.phone,
+                      ),
+                    )),
               const SizedBox(height: 24),
               // SMS preview
               _SmsPreviewRow(
                 expanded: _smsExpanded,
                 onToggle: () =>
                     setState(() => _smsExpanded = !_smsExpanded),
+                userName: userName,
               ),
               const SizedBox(height: 32),
               // Return button
@@ -105,8 +182,8 @@ class _AlertSentScreenState extends State<AlertSentScreen>
                 onPressed: () => Navigator.pop(context),
                 child: Text(
                   'Mark as false alarm',
-                  style: AppTextStyles.body
-                      .copyWith(color: AppColors.danger),
+                  style:
+                      AppTextStyles.body.copyWith(color: AppColors.danger),
                 ),
               ),
               const SizedBox(height: 32),
@@ -116,6 +193,12 @@ class _AlertSentScreenState extends State<AlertSentScreen>
       ),
     );
   }
+}
+
+class _NotifiedContact {
+  final String name;
+  final String phone;
+  const _NotifiedContact({required this.name, required this.phone});
 }
 
 class _ContactAlertCard extends StatelessWidget {
@@ -132,7 +215,8 @@ class _ContactAlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final timeStr = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -140,7 +224,9 @@ class _ContactAlertCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadowSm, blurRadius: 12, offset: Offset(0, 2)),
+              color: AppColors.shadowSm,
+              blurRadius: 12,
+              offset: Offset(0, 2)),
         ],
       ),
       child: Row(
@@ -179,8 +265,13 @@ class _ContactAlertCard extends StatelessWidget {
 class _SmsPreviewRow extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
+  final String userName;
 
-  const _SmsPreviewRow({required this.expanded, required this.onToggle});
+  const _SmsPreviewRow({
+    required this.expanded,
+    required this.onToggle,
+    required this.userName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +281,9 @@ class _SmsPreviewRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadowSm, blurRadius: 12, offset: Offset(0, 2)),
+              color: AppColors.shadowSm,
+              blurRadius: 12,
+              offset: Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -224,11 +317,10 @@ class _SmsPreviewRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'EMERGENCY: Sarah may need help.\n'
-                'Trigger: Fall detected.\n'
-                'Location: 31.5°N, 74.3°E — Lahore.\n'
-                'Time: ${TimeOfDay.now().format(context)}.\n'
-                'Please respond immediately. — Sent by Cardiva.',
+                '🚨 CARDIVA EMERGENCY — SOS ACTIVATED\n'
+                'Patient: $userName\n'
+                'Needs immediate assistance. Please respond now.\n'
+                '— Sent by Cardiva Health Monitor',
                 style: AppTextStyles.caption.copyWith(
                   fontFamily: 'monospace',
                   height: 1.6,
