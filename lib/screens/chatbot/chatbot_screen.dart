@@ -148,43 +148,10 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   }
 
   Future<void> _showRenameDialog(_ChatSession s) async {
-    final ctrl = TextEditingController(text: s.name);
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Rename Chat',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Chat name',
-            hintStyle: const TextStyle(color: Colors.white38),
-            enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white24)),
-            focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: AppColors.primary)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text('Save',
-                style: TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
+      builder: (ctx) => _RenameDialog(initialName: s.name),
     );
-    ctrl.dispose();
     if (result != null && result.isNotEmpty) _renameSession(s, result);
   }
 
@@ -577,7 +544,15 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10)),
           onSelected: (val) async {
-            if (val == 'rename') await _showRenameDialog(s);
+            if (val == 'rename') {
+              // Close the endDrawer first so its InheritedWidget subtree is
+              // fully unmounted before the dialog route is pushed. Showing a
+              // dialog while the Drawer is open causes _dependents.isEmpty
+              // assertion failures inside framework.dart.
+              _scaffoldKey.currentState?.closeEndDrawer();
+              await Future.delayed(const Duration(milliseconds: 300));
+              if (mounted) await _showRenameDialog(s);
+            }
             if (val == 'delete') _deleteSession(s);
           },
           itemBuilder: (_) => [
@@ -1636,6 +1611,65 @@ class _InfoRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Rename dialog ──────────────────────────────────────────────────────────
+
+class _RenameDialog extends StatefulWidget {
+  final String initialName;
+  const _RenameDialog({required this.initialName});
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1F2937),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Rename Chat',
+          style: TextStyle(color: Colors.white, fontSize: 16)),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Chat name',
+          hintStyle: const TextStyle(color: Colors.white38),
+          enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24)),
+          focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.primary)),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
+          child: Text('Save', style: TextStyle(color: AppColors.primary)),
+        ),
+      ],
     );
   }
 }
