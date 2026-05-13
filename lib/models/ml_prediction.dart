@@ -29,6 +29,15 @@ class MlPrediction {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'is_emergency': isEmergency,
+        'fall_detected': fallDetected,
+        'vitals_high_risk': vitalsHighRisk,
+        'confidence_score': confidenceScore,
+        'alert_class': alertClass.classNumber,
+        'analysis_message': analysisMessage,
+      };
+
   static AlertClass _classFromInt(int n) => switch (n) {
         1 => AlertClass.emergency,
         2 => AlertClass.fallAlert,

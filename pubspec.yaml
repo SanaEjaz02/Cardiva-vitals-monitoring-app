@@ -29,6 +29,12 @@ dependencies:
   # SMS via OS (replaces Twilio — free, no API key)
   url_launcher: ^6.3.0
 
+  # Real GPS location
+  geolocator: ^13.0.2
+
+  # Background foreground service (keeps vitals monitoring alive)
+  flutter_background_service: ^5.0.9
+
   cupertino_icons: ^1.0.8
   google_fonts: ^6.1.0
   shared_preferences: ^2.3.2

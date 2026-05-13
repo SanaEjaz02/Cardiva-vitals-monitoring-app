@@ -1,23 +1,45 @@
+import 'package:geolocator/geolocator.dart';
 import '../core/errors/app_exceptions.dart';
 
-/// Stub position — replaces geolocator during development.
-/// Swap back to the real geolocator implementation once NDK is installed.
-class Position {
-  final double latitude;
-  final double longitude;
-  const Position({required this.latitude, required this.longitude});
-}
+export 'package:geolocator/geolocator.dart' show Position;
 
 class LocationService {
   LocationService._();
 
   static Future<Position> getCurrentPosition() async {
-    // Returns a fixed Karachi coordinate as a development stub.
-    // Real GPS via geolocator is re-enabled once NDK is available.
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw LocationException('Location services are disabled on this device.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw LocationException('Location permission was denied.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw LocationException(
+          'Location permission permanently denied. Enable it in Settings.');
+    }
+
     try {
-      return const Position(latitude: 24.8607, longitude: 67.0011);
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
     } catch (e) {
-      throw LocationException('Location unavailable: $e');
+      // Fall back to last known position if fresh fix times out
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+      throw LocationException('Could not determine location: $e');
     }
   }
 }

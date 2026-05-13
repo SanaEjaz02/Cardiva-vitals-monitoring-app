@@ -2,75 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/alert_class.dart';
 import '../../models/analysis_record.dart';
-import '../../providers/analysis_provider.dart';
-import '../../providers/user_provider.dart';
-import '../../services/pdf_report_service.dart';
+import '../../models/health_report.dart';
+import '../../providers/report_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../widgets/atoms/ring_widget.dart';
+import 'report_detail_screen.dart';
 
-class HealthReportScreen extends ConsumerStatefulWidget {
+class HealthReportScreen extends ConsumerWidget {
   const HealthReportScreen({super.key});
 
   @override
-  ConsumerState<HealthReportScreen> createState() => _HealthReportScreenState();
-}
-
-class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
-  bool _exporting = false;
-  bool _sharingWA = false;
-
-  Future<void> _exportPdf(
-      DailySummary summary, List<AnalysisRecord> records) async {
-    setState(() => _exporting = true);
-    try {
-      final user = ref.read(userProvider);
-      await PdfReportService.shareViaSheet(
-        summary: summary,
-        records: records,
-        patientName: user?.name,
-        gender: user?.gender,
-        age: user?.age,
-        heightCm: user?.heightCm,
-        weightKg: user?.weightKg,
-        bmi: user?.bmi,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
-
-  Future<void> _shareToWhatsApp(DailySummary summary) async {
-    setState(() => _sharingWA = true);
-    try {
-      final user = ref.read(userProvider);
-      final sent = await PdfReportService.shareTextToWhatsApp(
-        summary,
-        name: user?.name,
-      );
-      if (!sent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WhatsApp not found on this device.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sharingWA = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = ref.watch(dailySummaryProvider);
-    final records = ref.watch(todayAnalysisProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reports = ref.watch(reportProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bgWhite,
+      backgroundColor: AppColors.bgLight,
       appBar: AppBar(
         backgroundColor: AppColors.bgWhite,
         elevation: 0,
@@ -79,46 +25,26 @@ class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
               size: 20, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Health Report', style: AppTextStyles.h1),
+        title: Text('Health Reports', style: AppTextStyles.h1),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined,
-                size: 20, color: AppColors.textPrimary),
-            onPressed: () {},
-          ),
-        ],
       ),
-      body: summary == null
-          ? _buildEmptyState()
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  _buildDateHeader(),
-                  const SizedBox(height: 16),
-                  _buildScoreHero(summary),
-                  const SizedBox(height: 16),
-                  _buildAiSummary(summary),
-                  const SizedBox(height: 16),
-                  _buildBreakdown(summary),
-                  const SizedBox(height: 16),
-                  _buildAvgVitals(summary),
-                  const SizedBox(height: 16),
-                  _buildTimeline(records),
-                  const SizedBox(height: 16),
-                  _buildExportButtons(summary, records),
-                  const SizedBox(height: 40),
-                ],
-              ),
+      body: reports.isEmpty
+          ? _EmptyState()
+          : ListView.builder(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: reports.length,
+              itemBuilder: (ctx, i) => _ReportTile(report: reports[i]),
             ),
     );
   }
+}
 
-  // ── Empty state ───────────────────────────────────────────────────────────
-  Widget _buildEmptyState() {
+// ── Empty state ────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -129,18 +55,16 @@ class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                color: AppColors.primaryBg,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.bar_chart_rounded,
+                  color: AppColors.primaryBg, shape: BoxShape.circle),
+              child: const Icon(Icons.description_outlined,
                   color: AppColors.primary, size: 40),
             ),
             const SizedBox(height: 20),
-            Text('No analyses yet today',
+            Text('No reports yet',
                 style: AppTextStyles.h2, textAlign: TextAlign.center),
             const SizedBox(height: 8),
             Text(
-              'Auto-analysis runs at your set interval.\nOpen AI Monitor to start, or tap Analyze Now.',
+              'Reports are created automatically when AI analyses run.\nOpen AI Monitor to start.',
               style: AppTextStyles.body
                   .copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
@@ -150,569 +74,318 @@ class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
       ),
     );
   }
+}
 
-  // ── Date header ───────────────────────────────────────────────────────────
-  Widget _buildDateHeader() {
+// ── Report list tile (WPS/Word style) ─────────────────────────────────────
+
+class _ReportTile extends ConsumerStatefulWidget {
+  final HealthReport report;
+  const _ReportTile({required this.report});
+
+  @override
+  ConsumerState<_ReportTile> createState() => _ReportTileState();
+}
+
+class _ReportTileState extends ConsumerState<_ReportTile> {
+  Color _iconColor(List<AnalysisRecord> records) {
+    if (records.isEmpty) return AppColors.primary;
+    final hasEmergency = records
+        .any((r) => r.prediction.alertClass == AlertClass.emergency);
+    final hasWarn = records.any((r) =>
+        r.prediction.alertClass == AlertClass.fallAlert ||
+        r.prediction.alertClass == AlertClass.vitalsAlert);
+    if (hasEmergency) return AppColors.danger;
+    if (hasWarn) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  String _subtitle(List<AnalysisRecord> records) {
+    final parts = widget.report.dayKey.split('-');
+    final day = DateTime(
+        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
     final now = DateTime.now();
-    final months = [
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final d = DateTime(day.year, day.month, day.day);
+
+    final dateLabel = d == today
+        ? 'Today'
+        : d == yesterday
+            ? 'Yesterday'
+            : _fmtDate(day);
+
+    final t = widget.report.createdAt;
+    final h = t.hour, m = t.minute.toString().padLeft(2, '0');
+    final period = h >= 12 ? 'PM' : 'AM';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    final timeStr = '$h12:$m $period';
+
+    final count = records.length;
+    final countLabel = count == 0
+        ? 'No analyses'
+        : '$count anal${count == 1 ? 'ysis' : 'yses'}';
+    return '$dateLabel  ·  $timeStr  ·  $countLabel';
+  }
+
+  String _fmtDate(DateTime dt) {
+    const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
-    final dateStr =
-        'Today, ${months[now.month - 1]} ${now.day}, ${now.year}';
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
 
-    return Row(
-      children: [
-        const Icon(Icons.calendar_today_rounded,
-            size: 15, color: AppColors.textSecondary),
-        const SizedBox(width: 6),
-        Text(dateStr,
-            style: AppTextStyles.caption
-                .copyWith(fontWeight: FontWeight.w600)),
-      ],
+  void _openDetail(List<AnalysisRecord> records) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportDetailScreen(
+          report: widget.report,
+          records: records,
+        ),
+      ),
     );
   }
 
-  // ── Score hero card ───────────────────────────────────────────────────────
-  Widget _buildScoreHero(DailySummary s) {
-    final scoreColor = s.healthScore >= 80
-        ? AppColors.success
-        : s.healthScore >= 60
-            ? AppColors.warning
-            : AppColors.danger;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          transform: GradientRotation(2.356),
-          colors: [AppColors.primary, AppColors.primaryDeep],
+  Future<void> _rename() async {
+    final ctrl = TextEditingController(text: widget.report.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Rename Report', style: AppTextStyles.h2),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Report name',
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
         ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-              color: AppColors.shadowLg,
-              blurRadius: 28,
-              offset: Offset(0, 8)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel',
+                style:
+                    AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Save'),
+          ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    );
+    if (result != null && mounted) {
+      ref.read(reportProvider.notifier).rename(widget.report.id, result);
+    }
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete Report', style: AppTextStyles.h2),
+        content: Text(
+          'Delete "${widget.report.name}" and all its analysis records? This cannot be undone after the undo window.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style:
+                    AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final deleted = await ref
+        .read(reportProvider.notifier)
+        .delete(widget.report.id);
+    final report = widget.report;
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('"${report.name}" deleted'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              ref
+                  .read(reportProvider.notifier)
+                  .restore(report, deleted);
+            },
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final records = ref.watch(reportProvider.notifier).recordsFor(widget.report);
+    final color = _iconColor(records);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: AppColors.bgWhite,
+        child: InkWell(
+          onTap: () => _openDetail(records),
+          borderRadius: BorderRadius.circular(0),
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
               children: [
-                Text(
-                  'Health Score',
-                  style: AppTextStyles.caption
-                      .copyWith(color: Colors.white.withValues(alpha: 0.7)),
+                // Document icon
+                Container(
+                  width: 44,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                        color: color.withValues(alpha: 0.3), width: 1),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Folded corner decoration
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: CustomPaint(
+                          size: const Size(10, 10),
+                          painter: _FoldedCornerPainter(color: color),
+                        ),
+                      ),
+                      Center(
+                        child: Icon(Icons.favorite_rounded,
+                            color: color, size: 20),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${s.healthScore} / 100',
-                  style: AppTextStyles.numericDisplay
-                      .copyWith(color: Colors.white, fontSize: 36),
+                const SizedBox(width: 14),
+                // Name + subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.report.name,
+                        style: AppTextStyles.body.copyWith(
+                            fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _subtitle(records),
+                        style: AppTextStyles.caption.copyWith(
+                            color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: [
-                    _StatPill(
-                        label: '${s.totalAnalyses} analyses',
-                        icon: Icons.psychology_rounded),
-                    _StatPill(
-                        label: '${s.normalCount} normal',
-                        icon: Icons.check_circle_outline_rounded),
-                    if (s.warningCount > 0)
-                      _StatPill(
-                          label: '${s.warningCount} warnings',
-                          icon: Icons.warning_amber_rounded),
-                    if (s.emergencyCount > 0)
-                      _StatPill(
-                          label: '${s.emergencyCount} emergency',
-                          icon: Icons.emergency_rounded),
+                // Three-dot menu
+                PopupMenuButton<_MenuAction>(
+                  icon: const Icon(Icons.more_vert_rounded,
+                      color: AppColors.textSecondary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onSelected: (action) async {
+                    switch (action) {
+                      case _MenuAction.open:
+                        _openDetail(records);
+                      case _MenuAction.rename:
+                        await _rename();
+                      case _MenuAction.share:
+                        _openDetail(records); // detail screen has share
+                      case _MenuAction.delete:
+                        await _delete();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    _menuItem(_MenuAction.open, Icons.open_in_new_rounded,
+                        'Open'),
+                    _menuItem(_MenuAction.share,
+                        Icons.share_outlined, 'Share / Export PDF'),
+                    _menuItem(_MenuAction.rename,
+                        Icons.drive_file_rename_outline_rounded, 'Rename'),
+                    _menuItem(_MenuAction.delete,
+                        Icons.delete_outline_rounded, 'Delete',
+                        color: AppColors.danger),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          RingWidget(
-            percent: s.healthScore / 100,
-            color: scoreColor,
-            size: 64,
-            strokeWidth: 7,
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  // ── AI summary card ───────────────────────────────────────────────────────
-  Widget _buildAiSummary(DailySummary s) {
-    return _SectionCard(
+  PopupMenuItem<_MenuAction> _menuItem(
+    _MenuAction action,
+    IconData icon,
+    String label, {
+    Color color = AppColors.textPrimary,
+  }) {
+    return PopupMenuItem<_MenuAction>(
+      value: action,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.auto_awesome_rounded,
-              color: Color(0xFF8B5CF6), size: 20),
+          Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(s.summaryText, style: AppTextStyles.body),
-                const SizedBox(height: 6),
-                Text('Generated by Cardiva AI',
-                    style: AppTextStyles.caption),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Analysis breakdown ────────────────────────────────────────────────────
-  Widget _buildBreakdown(DailySummary s) {
-    final total = s.totalAnalyses;
-    return _SectionCard(
-      title: 'Analysis Breakdown',
-      child: Column(
-        children: [
-          _BreakdownBar(
-            label: 'Normal',
-            count: s.normalCount,
-            total: total,
-            color: AppColors.success,
-          ),
-          const SizedBox(height: 8),
-          _BreakdownBar(
-            label: 'Warning',
-            count: s.warningCount,
-            total: total,
-            color: AppColors.warning,
-          ),
-          const SizedBox(height: 8),
-          _BreakdownBar(
-            label: 'Emergency',
-            count: s.emergencyCount,
-            total: total,
-            color: AppColors.danger,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Average vitals ────────────────────────────────────────────────────────
-  Widget _buildAvgVitals(DailySummary s) {
-    return _SectionCard(
-      title: 'Average Vitals Today',
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 2.5,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        children: [
-          _VitalTile(
-            icon: Icons.favorite_rounded,
-            label: 'Heart Rate',
-            value: '${s.avgHr.toStringAsFixed(0)} bpm',
-            color: _hrColor(s.avgHr),
-          ),
-          _VitalTile(
-            icon: Icons.air_rounded,
-            label: 'SpO₂',
-            value: '${s.avgSpo2.toStringAsFixed(1)}%',
-            color: _spo2Color(s.avgSpo2),
-          ),
-          _VitalTile(
-            icon: Icons.timeline_rounded,
-            label: 'HRV',
-            value: '${s.avgHrv.toStringAsFixed(0)} ms',
-            color: _hrvColor(s.avgHrv),
-          ),
-          _VitalTile(
-            icon: Icons.waves_rounded,
-            label: 'Respiration',
-            value: '${s.avgRr.toStringAsFixed(0)}/min',
-            color: _rrColor(s.avgRr),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Analysis timeline ─────────────────────────────────────────────────────
-  Widget _buildTimeline(List<AnalysisRecord> records) {
-    if (records.isEmpty) return const SizedBox.shrink();
-    final shown = records.reversed.take(12).toList();
-
-    return _SectionCard(
-      title: 'Analysis Timeline',
-      child: Column(
-        children: shown.map((r) => _TimelineEntry(record: r)).toList(),
-      ),
-    );
-  }
-
-  // ── Export buttons ────────────────────────────────────────────────────────
-  Widget _buildExportButtons(
-      DailySummary summary, List<AnalysisRecord> records) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            // Export PDF → native share sheet (WhatsApp, email, Drive…)
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed:
-                    _exporting ? null : () => _exportPdf(summary, records),
-                icon: _exporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.primary),
-                      )
-                    : const Icon(Icons.picture_as_pdf_outlined, size: 17),
-                label: Text(_exporting ? 'Generating…' : 'Export PDF'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // WhatsApp → opens WhatsApp with a formatted text summary
-            Expanded(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366), // WhatsApp green
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed:
-                    _sharingWA ? null : () => _shareToWhatsApp(summary),
-                icon: _sharingWA
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.chat_rounded, size: 17),
-                label: Text(_sharingWA ? 'Opening…' : 'WhatsApp'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Full-width "Share with Doctor" — opens share sheet for the PDF
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.5)),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed:
-                _exporting ? null : () => _exportPdf(summary, records),
-            icon: const Icon(Icons.share_outlined, size: 17),
-            label: const Text('Share Report (PDF)'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Color helpers ─────────────────────────────────────────────────────────
-  Color _hrColor(double v) {
-    if (v < 40 || v > 150) return AppColors.danger;
-    if (v < 60 || v > 100) return AppColors.warning;
-    return AppColors.success;
-  }
-
-  Color _spo2Color(double v) {
-    if (v < 90) return AppColors.danger;
-    if (v < 95) return AppColors.warning;
-    return AppColors.success;
-  }
-
-  Color _hrvColor(double v) {
-    if (v < 20) return AppColors.danger;
-    if (v < 50) return AppColors.warning;
-    return AppColors.success;
-  }
-
-  Color _rrColor(double v) {
-    if (v < 5 || v > 30) return AppColors.danger;
-    if (v < 12 || v > 20) return AppColors.warning;
-    return AppColors.success;
-  }
-}
-
-// ── Section card ──────────────────────────────────────────────────────────
-
-class _SectionCard extends StatelessWidget {
-  final String? title;
-  final Widget child;
-
-  const _SectionCard({this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.bgWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-              color: AppColors.shadowSm,
-              blurRadius: 12,
-              offset: Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null) ...[
-            Text(title!, style: AppTextStyles.h2),
-            const Divider(color: AppColors.divider),
-            const SizedBox(height: 4),
-          ],
-          child,
+          Text(label,
+              style: AppTextStyles.body.copyWith(color: color)),
         ],
       ),
     );
   }
 }
 
-// ── Breakdown bar ─────────────────────────────────────────────────────────
+enum _MenuAction { open, share, rename, delete }
 
-class _BreakdownBar extends StatelessWidget {
-  final String label;
-  final int count;
-  final int total;
+// ── Folded corner painter (document icon decoration) ──────────────────────
+
+class _FoldedCornerPainter extends CustomPainter {
   final Color color;
-
-  const _BreakdownBar({
-    required this.label,
-    required this.count,
-    required this.total,
-    required this.color,
-  });
+  const _FoldedCornerPainter({required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    final pct = total > 0 ? count / total : 0.0;
-    final pctStr = '${(pct * 100).round()}%';
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 72,
-          child: Text(label, style: AppTextStyles.caption),
-        ),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct,
-              backgroundColor: color.withValues(alpha: 0.12),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-              minHeight: 10,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 36,
-          child: Text(
-            pctStr,
-            style: AppTextStyles.caption.copyWith(
-                color: color, fontWeight: FontWeight.w600),
-            textAlign: TextAlign.end,
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 22,
-          child: Text(
-            '($count)',
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.textSecondary),
-          ),
-        ),
-      ],
-    );
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.4)
+      ..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
   }
-}
-
-// ── Vital tile ────────────────────────────────────────────────────────────
-
-class _VitalTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _VitalTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(label,
-                    style: AppTextStyles.caption,
-                    overflow: TextOverflow.ellipsis),
-                Text(value,
-                    style: AppTextStyles.body.copyWith(
-                        color: color, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Timeline entry ────────────────────────────────────────────────────────
-
-class _TimelineEntry extends StatelessWidget {
-  final AnalysisRecord record;
-
-  const _TimelineEntry({required this.record});
-
-  @override
-  Widget build(BuildContext context) {
-    final ac = record.prediction.alertClass;
-    final color = switch (ac) {
-      AlertClass.emergency => AppColors.danger,
-      AlertClass.fallAlert || AlertClass.vitalsAlert => AppColors.warning,
-      AlertClass.normal => AppColors.success,
-    };
-
-    final timeStr = _fmtTime(record.timestamp);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          // Time
-          SizedBox(
-            width: 56,
-            child: Text(timeStr,
-                style: AppTextStyles.caption
-                    .copyWith(fontWeight: FontWeight.w600)),
-          ),
-          // Status dot
-          Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          // Status badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              ac.label,
-              style: AppTextStyles.caption.copyWith(
-                  color: color, fontWeight: FontWeight.w700, fontSize: 10),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Vitals
-          Expanded(
-            child: Text(
-              'HR ${record.heartRate.toStringAsFixed(0)}  ·  SpO₂ ${record.spo2.toStringAsFixed(0)}%',
-              style: AppTextStyles.caption,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _fmtTime(DateTime t) {
-    final h = t.hour;
-    final m = t.minute.toString().padLeft(2, '0');
-    final period = h >= 12 ? 'PM' : 'AM';
-    final h12 = h % 12 == 0 ? 12 : h % 12;
-    return '$h12:$m $period';
-  }
-}
-
-// ── Stat pill (hero card) ─────────────────────────────────────────────────
-
-class _StatPill extends StatelessWidget {
-  final String label;
-  final IconData icon;
-
-  const _StatPill({required this.label, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 11, color: Colors.white.withValues(alpha: 0.8)),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: AppTextStyles.caption
-              .copyWith(color: Colors.white.withValues(alpha: 0.85)),
-        ),
-      ],
-    );
-  }
+  bool shouldRepaint(_FoldedCornerPainter old) => old.color != color;
 }
