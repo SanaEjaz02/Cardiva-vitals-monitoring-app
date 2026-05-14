@@ -160,9 +160,14 @@ class _EmergencyPopupState extends State<EmergencyPopup>
         'Needs immediate assistance. Please respond now.\n'
         '— Sent by Cardiva Health Monitor';
 
-    for (final contact in _contacts) {
-      SmsService.sendAlert(to: contact.phone, message: message)
-          .catchError((_) {});
+    final phones = _contacts.map((c) => c.phone).toList();
+    if (phones.isNotEmpty) {
+      SmsService.sendSmsToAll(phones: phones, message: message).catchError((_) {});
+      for (int i = 0; i < phones.length; i++) {
+        Future.delayed(Duration(milliseconds: i * 800), () {
+          SmsService.sendWhatsApp(to: phones[i], message: message).catchError((_) {});
+        });
+      }
     }
 
     Future.delayed(const Duration(seconds: 2), () {

@@ -7,6 +7,7 @@ import '../../models/health_event.dart';
 import '../../models/ml_prediction.dart';
 import '../../models/vital_reading.dart';
 import '../../providers/user_provider.dart';
+import '../../router/app_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -150,6 +151,8 @@ class _PredictionResultScreenState
             const SizedBox(height: 20),
             if (_cls != AlertClass.normal) _buildActionCard(),
             if (_cls == AlertClass.normal) _buildNormalFooter(),
+            const SizedBox(height: 16),
+            _buildAskAiCard(),
             const SizedBox(height: 20),
           ],
         ),
@@ -481,6 +484,73 @@ class _PredictionResultScreenState
             child: Text(
               'All vitals are within normal range. No action required.',
               style: AppTextStyles.body.copyWith(color: AppColors.success),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAskAiCard() {
+    final r = widget.reading;
+    final p = widget.prediction;
+    final query =
+        'I just got an AI analysis result. Here are my vitals:\n'
+        '• Heart Rate: ${r.heartRate.toStringAsFixed(0)} bpm\n'
+        '• SpO₂: ${r.spO2.toStringAsFixed(1)}%\n'
+        '• HRV: ${r.hrv.toStringAsFixed(0)} ms\n'
+        '• Respiration: ${r.respirationRate.toStringAsFixed(0)} /min\n'
+        '• Fall Detected: ${p.fallDetected ? "YES" : "No"}\n'
+        '• Status: ${p.alertClass.label}\n'
+        '• Confidence: ${p.confidenceScore.toStringAsFixed(1)}%\n\n'
+        'The AI said: "${p.analysisMessage}"\n\n'
+        'What does this mean for my health? What should I do?';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF9B6DD6).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: const Color(0xFF9B6DD6).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.smart_toy_rounded,
+                  color: Color(0xFF9B6DD6), size: 18),
+              const SizedBox(width: 8),
+              Text('Ask Cardiva AI',
+                  style: AppTextStyles.h2
+                      .copyWith(color: const Color(0xFF9B6DD6))),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Get an explanation of your results from Cardiva AI.',
+            style: AppTextStyles.body
+                .copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9B6DD6),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => Navigator.pushNamed(
+                context,
+                AppRouter.chat,
+                arguments: query,
+              ),
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Ask Cardiva AI about this result'),
             ),
           ),
         ],

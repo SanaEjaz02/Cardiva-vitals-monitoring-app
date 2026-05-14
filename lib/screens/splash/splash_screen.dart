@@ -1,10 +1,12 @@
 ﻿import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/session_service.dart';
-import '../onboarding/onboarding_screen.dart';
+import '../../theme/app_colors.dart';
 import '../auth/auth_screen.dart';
 import '../main_nav_screen.dart';
+import '../onboarding/onboarding_screen.dart';
 
 // Widget tree:
 // Scaffold (bgWhite)
@@ -21,14 +23,14 @@ import '../main_nav_screen.dart';
 //             └── _BouncingDots
 //                 └── AnimatedBuilder → Row → 3× Transform.translate → Container 8×8
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entryController;
   late final Animation<double> _entryFade;
@@ -47,9 +49,6 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _entryController.forward();
-
-    // Resolve the startup destination in parallel with the minimum display
-    // timer so the splash never adds latency beyond its visual purpose.
     _resolveStartupRoute();
   }
 
@@ -75,7 +74,9 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (isSignedIn) {
-      // Active session found — go straight to the home screen.
+      // Load the real user profile from store before entering the app.
+      await ref.read(userProvider.notifier).loadFromStore();
+      if (!mounted) return;
       _fadeNavigate(const MainNavScreen());
       return;
     }

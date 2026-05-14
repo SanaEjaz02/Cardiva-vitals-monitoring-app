@@ -1,24 +1,29 @@
 ﻿import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../models/user_profile.dart';
+import '../../providers/user_provider.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? get _user => AuthService.currentUser;
   String? _photoPath;
   int _contactCount = 0;
@@ -88,6 +93,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showEditProfile() {
+    final userProfile = ref.read(userProvider);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -99,7 +105,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => _EditProfileSheet(
         currentName: _displayName,
         currentPhotoPath: _photoPath,
-        onSave: (name, photoPath) async {
+        currentProfile: userProfile,
+        onSave: (name, photoPath, updatedProfile) async {
           if (name.isNotEmpty && name != _user?.displayName) {
             await _user?.updateDisplayName(name);
           }
@@ -110,6 +117,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             await prefs.remove('profile_photo_path');
           }
           if (mounted) setState(() => _photoPath = photoPath);
+
+          // Persist updated profile to Riverpod and Firestore
+          if (updatedProfile != null) {
+            ref.read(userProvider.notifier).updateProfile(updatedProfile);
+            FirestoreService.saveProfile(updatedProfile.toJson()).catchError((_) {});
+            // Save to SharedPreferences for offline access
+            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            await prefs.setString(
+                'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
+          }
         },
       ),
     );
@@ -352,12 +369,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _EditProfileSheet extends StatefulWidget {
   final String currentName;
   final String? currentPhotoPath;
-  final Future<void> Function(String name, String? photoPath) onSave;
+  final UserProfile? currentProfile;
+  final Future<void> Function(String name, String? photoPath, UserProfile? profile) onSave;
 
   const _EditProfileSheet({
     required this.currentName,
     required this.currentPhotoPath,
     required this.onSave,
+    this.currentProfile,
   });
 
   @override
@@ -366,27 +385,61 @@ class _EditProfileSheet extends StatefulWidget {
 
 class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _nameCtrl;
+  late final TextEditingController _heightCtrl;
+  late final TextEditingController _weightCtrl;
   String? _photoPath;
   bool _saving = false;
-  // Track if the user explicitly removed the photo
   bool _photoRemoved = false;
+
+  String _gender = 'Male';
+  String _bloodGroup = 'A+';
+  DateTime? _dob;
+
+  static const _genders = ['Male', 'Female', 'Other'];
+  static const _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
     super.initState();
+    final p = widget.currentProfile;
     _nameCtrl = TextEditingController(text: widget.currentName);
+    _heightCtrl = TextEditingController(
+        text: p != null ? p.heightCm.toStringAsFixed(0) : '170');
+    _weightCtrl = TextEditingController(
+        text: p != null ? p.weightKg.toStringAsFixed(1) : '70.0');
     _photoPath = widget.currentPhotoPath;
+    _gender = p?.gender.isNotEmpty == true ? p!.gender : 'Male';
+    _bloodGroup = p?.bloodGroup.isNotEmpty == true ? p!.bloodGroup : 'A+';
+    _dob = p?.dateOfBirth;
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _heightCtrl.dispose();
+    _weightCtrl.dispose();
     super.dispose();
   }
 
   String get _initial => widget.currentName.isNotEmpty
       ? widget.currentName[0].toUpperCase()
       : 'P';
+
+  Future<void> _pickDob() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dob ?? DateTime(1990),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _dob = picked);
+  }
+
+  String get _dobLabel {
+    if (_dob == null) return 'Select date of birth';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${_dob!.day} ${months[_dob!.month - 1]} ${_dob!.year}';
+  }
 
   void _showSourcePicker() {
     showModalBottomSheet(
@@ -551,7 +604,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           Text('Tap to change photo', style: AppTextStyles.caption),
           const SizedBox(height: 20),
 
-          // ── Name field ────────────────────────────────────────────
+          // ── Name ─────────────────────────────────────────────────
           TextField(
             controller: _nameCtrl,
             textCapitalization: TextCapitalization.words,
@@ -562,6 +615,104 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               labelStyle: AppTextStyles.caption
                   .copyWith(color: AppColors.textSecondary),
             ),
+          ),
+          const SizedBox(height: 14),
+
+          // ── Height & Weight ───────────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _heightCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                  decoration: InputDecoration(
+                    labelText: 'Height (cm)',
+                    prefixIcon: const Icon(Icons.height_rounded,
+                        color: AppColors.textSecondary),
+                    labelStyle: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _weightCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                  decoration: InputDecoration(
+                    labelText: 'Weight (kg)',
+                    prefixIcon: const Icon(Icons.monitor_weight_outlined,
+                        color: AppColors.textSecondary),
+                    labelStyle: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // ── Date of Birth ─────────────────────────────────────────
+          GestureDetector(
+            onTap: _pickDob,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.divider),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cake_outlined,
+                      color: AppColors.textSecondary, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_dobLabel,
+                      style: AppTextStyles.body.copyWith(
+                        color: _dob == null
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                      )),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // ── Gender ────────────────────────────────────────────────
+          DropdownButtonFormField<String>(
+            value: _genders.contains(_gender) ? _gender : _genders.first,
+            decoration: InputDecoration(
+              labelText: 'Gender',
+              prefixIcon: const Icon(Icons.wc_rounded,
+                  color: AppColors.textSecondary),
+              labelStyle: AppTextStyles.caption
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+            items: _genders
+                .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                .toList(),
+            onChanged: (v) => setState(() => _gender = v ?? _gender),
+          ),
+          const SizedBox(height: 14),
+
+          // ── Blood Group ───────────────────────────────────────────
+          DropdownButtonFormField<String>(
+            value: _bloodGroups.contains(_bloodGroup)
+                ? _bloodGroup
+                : _bloodGroups.first,
+            decoration: InputDecoration(
+              labelText: 'Blood Group',
+              prefixIcon: const Icon(Icons.bloodtype_outlined,
+                  color: AppColors.textSecondary),
+              labelStyle: AppTextStyles.caption
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+            items: _bloodGroups
+                .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                .toList(),
+            onChanged: (v) => setState(() => _bloodGroup = v ?? _bloodGroup),
           ),
           const SizedBox(height: 24),
 
@@ -581,11 +732,30 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       ? null
                       : () async {
                           setState(() => _saving = true);
-                          final resultPath =
-                              _photoRemoved ? null : _photoPath;
+                          final resultPath = _photoRemoved ? null : _photoPath;
                           final nav = Navigator.of(context);
+                          final existing = widget.currentProfile;
+                          final heightCm =
+                              double.tryParse(_heightCtrl.text) ??
+                                  existing?.heightCm ?? 170.0;
+                          final weightKg =
+                              double.tryParse(_weightCtrl.text) ??
+                                  existing?.weightKg ?? 70.0;
+                          final updated = UserProfile(
+                            id: existing?.id ?? 'guest',
+                            name: _nameCtrl.text.trim(),
+                            email: existing?.email ?? '',
+                            phone: existing?.phone ?? '',
+                            dateOfBirth: _dob ??
+                                existing?.dateOfBirth ??
+                                DateTime(1990),
+                            gender: _gender,
+                            bloodGroup: _bloodGroup,
+                            heightCm: heightCm,
+                            weightKg: weightKg,
+                          );
                           await widget.onSave(
-                              _nameCtrl.text.trim(), resultPath);
+                              _nameCtrl.text.trim(), resultPath, updated);
                           if (mounted) nav.pop();
                         },
                   child: _saving

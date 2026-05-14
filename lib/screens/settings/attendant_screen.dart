@@ -3,10 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../../models/attendant.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
-import '../../models/attendant.dart';
 
 class AttendantScreen extends StatefulWidget {
   const AttendantScreen({super.key});
@@ -44,14 +45,28 @@ class _AttendantScreenState extends State<AttendantScreen> {
         });
       }
     } else {
+      // Nothing local — try Firestore
+      try {
+        final remote = await FirestoreService.loadAttendants();
+        if (remote != null && remote.isNotEmpty) {
+          final attendants = remote.map((j) => Attendant.fromJson(j)).toList();
+          final prefs2 = await SharedPreferences.getInstance();
+          await prefs2.setString(_storageKey,
+              jsonEncode(attendants.map((a) => a.toJson()).toList()));
+          if (mounted) setState(() => _attendants = attendants);
+        }
+      } catch (_) {}
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _save() async {
+    final json = jsonEncode(_attendants.map((a) => a.toJson()).toList());
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _storageKey, jsonEncode(_attendants.map((a) => a.toJson()).toList()));
+    await prefs.setString(_storageKey, json);
+    FirestoreService.saveAttendants(
+            _attendants.map((a) => a.toJson()).toList())
+        .catchError((_) {});
   }
 
   @override

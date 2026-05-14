@@ -1,9 +1,12 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/emergency_contact.dart';
 import '../models/user_profile.dart';
+import '../services/firestore_service.dart';
 
-// ── Demo seed data (replaced by real Supabase auth in Phase 10) ─────────────
 final _demoUser = UserProfile(
   id: 'demo-user-001',
   name: 'Demo User',
@@ -16,20 +19,40 @@ final _demoUser = UserProfile(
   weightKg: 70.0,
 );
 
-// ── User profile notifier ────────────────────────────────────────────────────
 class UserNotifier extends StateNotifier<UserProfile?> {
   UserNotifier() : super(_demoUser);
 
   void setUser(UserProfile profile) => state = profile;
   void clearUser() => state = null;
   void updateProfile(UserProfile updated) => state = updated;
+
+  /// Loads the real profile on login: SharedPreferences first, Firestore fallback.
+  Future<void> loadFromStore() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('user_profile_$uid');
+      if (raw != null) {
+        state = UserProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        return;
+      }
+      // Not cached locally — pull from Firestore
+      final profileJson = await FirestoreService.loadProfile();
+      if (profileJson != null) {
+        state = UserProfile.fromJson(profileJson);
+        // Cache locally for next launch
+        await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
+      }
+    } catch (_) {}
+  }
 }
 
 final userProvider = StateNotifierProvider<UserNotifier, UserProfile?>(
   (ref) => UserNotifier(),
 );
 
-// ── Emergency contacts notifier ──────────────────────────────────────────────
+// Emergency contacts notifier (legacy in-memory — real data lives in SharedPreferences/Firestore)
 class EmergencyContactsNotifier extends StateNotifier<List<EmergencyContact>> {
   EmergencyContactsNotifier()
       : super([

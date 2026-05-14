@@ -79,10 +79,15 @@ Vitals at time of alert:
 
 📍 $mapsLink''';
 
-    // Step 3: Send via WhatsApp (falls back to SMS) to all registered contacts
+    // Step 3: Send SMS to all contacts at once, then open WhatsApp sequentially
     final phones = await _loadContactPhones();
-    for (final phone in phones) {
-      SmsService.sendAlert(to: phone, message: message).catchError((_) {});
+    if (phones.isNotEmpty) {
+      SmsService.sendSmsToAll(phones: phones, message: message).catchError((_) {});
+      for (int i = 0; i < phones.length; i++) {
+        Future.delayed(Duration(milliseconds: i * 800), () {
+          SmsService.sendWhatsApp(to: phones[i], message: message).catchError((_) {});
+        });
+      }
     }
 
     // Step 4: Log alert to cloud (non-blocking)

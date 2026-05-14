@@ -1,4 +1,7 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/alert_class.dart';
+import '../../providers/analysis_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/skeleton_loader.dart';
@@ -404,11 +407,37 @@ class _TopBar extends StatelessWidget {
 
 // ── Hero card ──────────────────────────────────────────────────────────────
 
-class _HeroCard extends StatelessWidget {
+class _HeroCard extends ConsumerWidget {
   const _HeroCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summary = ref.watch(dailySummaryProvider);
+    final last = ref.watch(lastAnalysisProvider);
+
+    final score = summary?.healthScore ?? 0;
+    final hasData = last != null;
+
+    final statusLabel = !hasData
+        ? 'No analysis yet'
+        : last.prediction.alertClass == AlertClass.emergency
+            ? 'Emergency detected!'
+            : last.prediction.alertClass == AlertClass.fallAlert
+                ? 'Fall detected!'
+                : last.prediction.alertClass == AlertClass.vitalsAlert
+                    ? 'Vitals need attention'
+                    : 'All vitals in healthy range';
+
+    final scoreLabel = score >= 85
+        ? 'Excellent'
+        : score >= 70
+            ? 'Good'
+            : score >= 50
+                ? 'Fair'
+                : hasData
+                    ? 'Poor'
+                    : '—';
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -443,16 +472,13 @@ class _HeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         child: Stack(
           children: [
-            // Subtle dot grid texture
             Positioned.fill(child: CustomPaint(painter: _DotGridPainter())),
-            // Top-right radial glow
             const Positioned(
               top: -40,
               right: -30,
               child: _GlowOrb(
                   size: 180, color: Color(0xFF48CAE4), opacity: 0.22),
             ),
-            // Bottom-left glow
             const Positioned(
               bottom: -50,
               left: -20,
@@ -468,7 +494,6 @@ class _HeroCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 5),
@@ -494,7 +519,7 @@ class _HeroCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Excellent',
+                          scoreLabel,
                           style: AppTextStyles.h1White().copyWith(
                             fontSize: 32,
                             fontWeight: FontWeight.w900,
@@ -503,25 +528,28 @@ class _HeroCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          'All vitals in healthy range',
+                          statusLabel,
                           style: AppTextStyles.captionWhite().copyWith(
                             color: Colors.white.withValues(alpha: 0.68),
                             fontSize: 12,
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Row(
+                        Row(
                           children: [
-                            _HeroPill('High Accuracy', solid: true),
-                            SizedBox(width: 8),
-                            _HeroPill('Active', solid: false),
+                            const _HeroPill('AI Analysis', solid: true),
+                            const SizedBox(width: 8),
+                            _HeroPill(
+                              hasData ? 'Active' : 'No data',
+                              solid: false,
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 20),
-                  const _ScoreRing(score: 94),
+                  _ScoreRing(score: score),
                 ],
               ),
             ),
@@ -785,28 +813,48 @@ class _SkeletonGrid extends StatelessWidget {
 
 // ── Vital layout ───────────────────────────────────────────────────────────
 
-class _VitalLayout extends StatelessWidget {
+class _VitalLayout extends ConsumerWidget {
   final ValueChanged<int>? onSwitchTab;
   const _VitalLayout({this.onSwitchTab});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final last = ref.watch(lastAnalysisProvider);
+
+    final hr = last != null ? last.heartRate.toStringAsFixed(0) : '—';
+    final spo2 = last != null ? '${last.spo2.toStringAsFixed(0)}%' : '—';
+    final hrv = last != null ? '${last.hrv.toStringAsFixed(0)}ms' : '—';
+    final rr = last != null ? '${last.respirationRate.toStringAsFixed(0)}/min' : '—';
+    final activity = last?.prediction.analysisMessage.contains('fall') == true
+        ? 'Alert'
+        : 'Resting';
+    final fallSafe = last?.prediction.fallDetected != true;
+
+    String hrStatus() {
+      if (last == null) return 'No data';
+      final v = last.heartRate;
+      return v < 60 ? 'Low' : v > 100 ? 'High' : 'Stable';
+    }
+
+    String spo2Status() {
+      if (last == null) return 'No data';
+      return last.spo2 < 95 ? 'Low' : 'Stable';
+    }
+
     return Column(
       children: [
-        // Row 1: featured heart rate + 3 stacked mini cards
         SizedBox(
           height: 248,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Featured heart rate card — deep blue matching app palette
               Expanded(
                 flex: 5,
                 child: _FeaturedVitalCard(
                   name: 'Heart Rate',
-                  value: '72',
-                  unit: 'bpm',
-                  status: 'Stable',
+                  value: hr,
+                  unit: last != null ? 'bpm' : '',
+                  status: hrStatus(),
                   cardGradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -824,7 +872,6 @@ class _VitalLayout extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Stacked mini cards
               Expanded(
                 flex: 4,
                 child: Column(
@@ -832,8 +879,8 @@ class _VitalLayout extends StatelessWidget {
                     Expanded(
                       child: _MiniVitalCard(
                         name: 'SpO₂',
-                        value: '98%',
-                        status: 'Stable',
+                        value: spo2,
+                        status: spo2Status(),
                         icon: Icons.water_drop_rounded,
                         accentColor: const Color(0xFF0096C7),
                         customAnimation: const Spo2AnimWidget(
@@ -848,8 +895,12 @@ class _VitalLayout extends StatelessWidget {
                     Expanded(
                       child: _MiniVitalCard(
                         name: 'HRV',
-                        value: '45ms',
-                        status: 'Normal',
+                        value: hrv,
+                        status: last == null
+                            ? 'No data'
+                            : last.hrv < 20
+                                ? 'Low'
+                                : 'Normal',
                         icon: Icons.show_chart_rounded,
                         accentColor: const Color(0xFF7B5EA7),
                         customAnimation: const HrvAnimWidget(
@@ -864,8 +915,13 @@ class _VitalLayout extends StatelessWidget {
                     Expanded(
                       child: _MiniVitalCard(
                         name: 'Respiration',
-                        value: '16/min',
-                        status: 'Normal',
+                        value: rr,
+                        status: last == null
+                            ? 'No data'
+                            : last.respirationRate < 12 ||
+                                    last.respirationRate > 20
+                                ? 'Abnormal'
+                                : 'Normal',
                         icon: Icons.air_rounded,
                         accentColor: const Color(0xFF00B4D8),
                         customAnimation: const LungsAnimWidget(
@@ -884,31 +940,33 @@ class _VitalLayout extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        // Row 2: Activity + Fall Detection
-        const Row(
+        Row(
           children: [
             Expanded(
               child: _StatusCard(
                 label: 'Activity',
-                status: 'Walking',
+                status: activity,
                 statusIcon: Icons.directions_walk_rounded,
                 accentColor: AppColors.success,
                 customAnimation: ActivityAnimWidget(
                   color: AppColors.success,
                   size: 44,
-                  activityState: 'Walking',
+                  activityState: activity,
                 ),
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: _StatusCard(
                 label: 'Fall Detection',
-                status: 'Safe',
-                statusIcon: Icons.shield_rounded,
-                accentColor: AppColors.success,
+                status: fallSafe ? 'Safe' : 'Alert!',
+                statusIcon: fallSafe
+                    ? Icons.shield_rounded
+                    : Icons.warning_rounded,
+                accentColor:
+                    fallSafe ? AppColors.success : AppColors.danger,
                 customAnimation: ShieldAnimWidget(
-                  color: AppColors.success,
+                  color: fallSafe ? AppColors.success : AppColors.danger,
                   size: 44,
                 ),
               ),

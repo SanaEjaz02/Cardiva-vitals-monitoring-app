@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/analysis_record.dart';
 import '../models/health_report.dart';
+import '../services/firestore_service.dart';
 import 'analysis_provider.dart';
 
 final reportProvider =
@@ -44,6 +45,16 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
             .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       }
+      // If local is empty, pull from Firestore
+      if (state.isEmpty) {
+        final remote = await FirestoreService.loadHealthReports();
+        if (remote.isNotEmpty) {
+          state = remote;
+          final prefs2 = await SharedPreferences.getInstance();
+          await prefs2.setString(
+              _key(), jsonEncode(state.map((r) => r.toJson()).toList()));
+        }
+      }
     } catch (_) {}
   }
 
@@ -52,6 +63,8 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _key(), jsonEncode(state.map((r) => r.toJson()).toList()));
+      // Sync to Firestore in the background
+      FirestoreService.syncHealthReports(state).catchError((_) {});
     } catch (_) {}
   }
 

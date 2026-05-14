@@ -6,13 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alert_class.dart';
 import '../models/analysis_record.dart';
 import '../models/ml_prediction.dart';
+import '../services/firestore_service.dart';
 import '../services/ml_service.dart';
 import '../services/notification_service.dart';
 import 'user_provider.dart';
 import 'vital_provider.dart';
 
 // ── Interval setting (minutes) ─────────────────────────────────────────────
-final analysisIntervalMinProvider = StateProvider<int>((ref) => 5);
+final analysisIntervalMinProvider = StateProvider<int>((ref) => 120);
 
 // ── History ────────────────────────────────────────────────────────────────
 final analysisHistoryProvider =
@@ -183,16 +184,26 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_storageKey());
+      final cutoff = DateTime.now().subtract(const Duration(days: 90));
       if (raw != null) {
         final list = jsonDecode(raw) as List;
-        final records = list
+        state = list
             .map((j) => AnalysisRecord.fromJson(j as Map<String, dynamic>))
-            .toList();
-        // Keep at most the last 90 days
-        final cutoff = DateTime.now().subtract(const Duration(days: 90));
-        state = records
             .where((r) => r.timestamp.isAfter(cutoff))
             .toList();
+      }
+      // If local is empty, pull from Firestore
+      if (state.isEmpty) {
+        final remote = await FirestoreService.loadAnalysisRecords();
+        if (remote.isNotEmpty) {
+          state = remote.where((r) => r.timestamp.isAfter(cutoff)).toList();
+          // Cache locally so next launch is instant
+          final prefs2 = await SharedPreferences.getInstance();
+          await prefs2.setString(
+            _storageKey(),
+            jsonEncode(state.map((r) => r.toJson()).toList()),
+          );
+        }
       }
     } catch (_) {}
   }
@@ -202,6 +213,8 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
       final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode(state.map((r) => r.toJson()).toList());
       await prefs.setString(_storageKey(), json);
+      // Sync to Firestore in the background
+      FirestoreService.syncAnalysisRecords(state).catchError((_) {});
     } catch (_) {}
   }
 

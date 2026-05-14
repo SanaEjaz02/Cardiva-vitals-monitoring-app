@@ -61,7 +61,10 @@ class AppRouter {
         setupContact: (_) => const EmergencyContactSetupScreen(),
         dashboard: (_) => const MainNavScreen(),
         alertSent: (_) => const AlertSentScreen(),
-        chat: (_) => const ChatbotScreen(),
+        chat: (ctx) => ChatbotScreen(
+              initialMessage:
+                  ModalRoute.of(ctx)?.settings.arguments as String?,
+            ),
         notifications: (_) => const NotificationsScreen(),
         vitalsAi: (_) => const VitalsAiScreen(),
         settings: (_) => const SettingsScreen(),

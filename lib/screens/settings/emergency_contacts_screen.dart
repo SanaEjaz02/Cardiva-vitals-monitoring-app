@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -44,16 +44,32 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         });
       }
     } else {
+      // Nothing local — try Firestore
+      try {
+        final remote = await FirestoreService.loadEmergencyContacts();
+        if (remote != null && remote.isNotEmpty) {
+          final contacts =
+              remote.map((j) => _Contact.fromJson(j)).toList();
+          // Cache locally
+          final prefs2 = await SharedPreferences.getInstance();
+          await prefs2.setString(
+              _storageKey,
+              jsonEncode(contacts.map((c) => c.toJson()).toList()));
+          if (mounted) setState(() => _contacts = contacts);
+        }
+      } catch (_) {}
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _save() async {
+    final json = jsonEncode(_contacts.map((c) => c.toJson()).toList());
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _storageKey,
-        jsonEncode(
-            _contacts.map((c) => c.toJson()).toList()));
+    await prefs.setString(_storageKey, json);
+    // Sync to Firestore in the background
+    FirestoreService.saveEmergencyContacts(
+            _contacts.map((c) => c.toJson()).toList())
+        .catchError((_) {});
   }
 
   void _delete(_Contact c) {
@@ -165,13 +181,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _call(_Contact c) async {
-    final clean =
-        c.phone.replaceAll(RegExp(r'[^\d+]'), '');
-    final uri = Uri.parse('tel:$clean');
-    if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
   @override
@@ -310,14 +319,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                          Icons.call_outlined,
-                                          color: AppColors.success,
-                                          size: 22),
-                                      tooltip: 'Call',
-                                      onPressed: () => _call(c),
                                     ),
                                   ],
                                 ),

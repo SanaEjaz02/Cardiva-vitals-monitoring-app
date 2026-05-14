@@ -233,7 +233,8 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
 
   // ── Interval picker ───────────────────────────────────────────────────────
   void _pickInterval(BuildContext context) {
-    final options = [1, 5, 10, 15, 30];
+    // Options in minutes; displayed as hours
+    const options = [60, 120, 240, 360, 720];
     final current = ref.read(analysisIntervalMinProvider);
 
     showDialog<void>(
@@ -245,36 +246,40 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
           mainAxisSize: MainAxisSize.min,
           children: options
               .map(
-                (m) => ListTile(
-                  dense: true,
-                  leading: Icon(
-                    m == current
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    color: m == current
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  title: Text(
-                    m == 1 ? '1 minute' : '$m minutes',
-                    style: AppTextStyles.body.copyWith(
-                      fontWeight: m == current
-                          ? FontWeight.w600
-                          : FontWeight.w400,
+                (m) {
+                  final hrs = m ~/ 60;
+                  final label = hrs == 1 ? '1 hour' : '$hrs hours';
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      m == current
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_unchecked_rounded,
                       color: m == current
                           ? AppColors.primary
-                          : AppColors.textPrimary,
+                          : AppColors.textSecondary,
+                      size: 20,
                     ),
-                  ),
-                  onTap: () {
-                    ref
-                        .read(analysisHistoryProvider.notifier)
-                        .setInterval(m);
-                    _startCountdownTicker();
-                    Navigator.pop(ctx);
-                  },
-                ),
+                    title: Text(
+                      label,
+                      style: AppTextStyles.body.copyWith(
+                        fontWeight: m == current
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: m == current
+                            ? AppColors.primary
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                    onTap: () {
+                      ref
+                          .read(analysisHistoryProvider.notifier)
+                          .setInterval(m);
+                      _startCountdownTicker();
+                      Navigator.pop(ctx);
+                    },
+                  );
+                },
               )
               .toList(),
         ),
@@ -376,7 +381,9 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
                     size: 13, color: AppColors.primary),
                 const SizedBox(width: 4),
                 Text(
-                  intervalMin == 1 ? '1 min' : '$intervalMin min',
+                  intervalMin < 60
+                      ? '$intervalMin min'
+                      : '${intervalMin ~/ 60}h',
                   style: AppTextStyles.caption.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,

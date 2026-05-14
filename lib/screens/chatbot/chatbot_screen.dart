@@ -28,7 +28,9 @@ const _kSuggestions = [
 // ── Root widget ────────────────────────────────────────────────────────────
 
 class ChatbotScreen extends StatefulWidget {
-  const ChatbotScreen({super.key});
+  /// Optional pre-filled question sent automatically when the screen opens.
+  final String? initialMessage;
+  const ChatbotScreen({super.key, this.initialMessage});
   @override
   State<ChatbotScreen> createState() => _ChatbotScreenState();
 }
@@ -64,7 +66,15 @@ class _ChatbotScreenState extends State<ChatbotScreen>
     )..repeat(reverse: true);
     _groqApiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     _scrollCtrl.addListener(_onScroll);
-    _loadSessions();
+    _loadSessions().then((_) {
+      final msg = widget.initialMessage;
+      if (msg != null && msg.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _createSession(); // does NOT pop the navigator
+          _sendMessage(msg);
+        });
+      }
+    });
   }
 
   @override
@@ -109,7 +119,8 @@ class _ChatbotScreenState extends State<ChatbotScreen>
     );
   }
 
-  void _newSession() {
+  // Creates a session without closing any navigator route — safe for programmatic use.
+  void _createSession() {
     final s = _ChatSession(
       id: const Uuid().v4(),
       name: 'New Chat',
@@ -120,6 +131,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       _current = s;
     });
     _saveSessions();
+  }
+
+  // Creates a session AND closes the sidebar drawer (user-initiated).
+  void _newSession() {
+    _createSession();
     if (Navigator.canPop(context)) Navigator.pop(context);
   }
 
