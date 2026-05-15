@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/alert_class.dart';
 import '../../models/analysis_record.dart';
 import '../../models/health_report.dart';
+import '../../providers/analysis_provider.dart';
 import '../../providers/report_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../services/pdf_report_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import 'report_detail_screen.dart';
@@ -334,7 +337,7 @@ class _HealthReportScreenState extends ConsumerState<HealthReportScreen> {
 
 // ── Report tile (WPS/Word style) ──────────────────────────────────────────
 
-class _ReportTile extends ConsumerWidget {
+class _ReportTile extends ConsumerStatefulWidget {
   final HealthReport report;
   final VoidCallback onDelete;
   final VoidCallback onRename;
@@ -344,6 +347,17 @@ class _ReportTile extends ConsumerWidget {
     required this.onDelete,
     required this.onRename,
   });
+
+  @override
+  ConsumerState<_ReportTile> createState() => _ReportTileState();
+}
+
+class _ReportTileState extends ConsumerState<_ReportTile> {
+  bool _downloading = false;
+
+  HealthReport get report => widget.report;
+  VoidCallback get onDelete => widget.onDelete;
+  VoidCallback get onRename => widget.onRename;
 
   Color _iconColor(List<AnalysisRecord> records) {
     if (records.isEmpty) return AppColors.primary;
@@ -395,8 +409,31 @@ class _ReportTile extends ConsumerWidget {
     );
   }
 
+  Future<void> _download(
+      BuildContext context, List<AnalysisRecord> records) async {
+    setState(() => _downloading = true);
+    try {
+      final user = ref.read(userProvider);
+      final summary = buildSummaryFromRecords(records);
+      final file = await PdfReportService.generate(
+        summary: summary,
+        records: records,
+        patientName: user?.name,
+        gender: user?.gender,
+        age: user?.age,
+        heightCm: user?.heightCm,
+        weightKg: user?.weightKg,
+        bmi: user?.bmi,
+      );
+      await PdfReportService.shareFile(file);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final records = ref.watch(reportProvider.notifier).recordsFor(report);
     final color = _iconColor(records);
 
@@ -460,6 +497,19 @@ class _ReportTile extends ConsumerWidget {
                   ],
                 ),
               ),
+              // Export & share PDF
+              _downloading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.download_outlined,
+                          color: AppColors.primary, size: 22),
+                      tooltip: 'Export & share PDF',
+                      onPressed: () => _download(context, records),
+                    ),
               // Three-dot menu
               PopupMenuButton<_Act>(
                 icon: const Icon(Icons.more_vert_rounded,

@@ -3,19 +3,22 @@ class HealthReport {
   final String name;
   final String dayKey; // "2026-05-13"
   final DateTime createdAt;
+  final String? pdfUrl; // Firebase Storage download URL (null until first export)
 
   const HealthReport({
     required this.id,
     required this.name,
     required this.dayKey,
     required this.createdAt,
+    this.pdfUrl,
   });
 
-  HealthReport copyWith({String? name}) => HealthReport(
+  HealthReport copyWith({String? name, String? pdfUrl}) => HealthReport(
         id: id,
         name: name ?? this.name,
         dayKey: dayKey,
         createdAt: createdAt,
+        pdfUrl: pdfUrl ?? this.pdfUrl,
       );
 
   Map<String, dynamic> toJson() => {
@@ -23,6 +26,7 @@ class HealthReport {
         'name': name,
         'dayKey': dayKey,
         'createdAt': createdAt.toIso8601String(),
+        if (pdfUrl != null) 'pdfUrl': pdfUrl,
       };
 
   factory HealthReport.fromJson(Map<String, dynamic> json) => HealthReport(
@@ -30,6 +34,7 @@ class HealthReport {
         name: json['name'] as String,
         dayKey: json['dayKey'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
+        pdfUrl: json['pdfUrl'] as String?,
       );
 
   static String todayKey() {

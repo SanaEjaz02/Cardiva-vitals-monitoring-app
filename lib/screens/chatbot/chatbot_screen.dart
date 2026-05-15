@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../services/firestore_service.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -97,26 +98,53 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   // ── Session persistence ────────────────────────────────────────────────
 
   Future<void> _loadSessions() async {
+    // Load from local first
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('cardiva_chat_sessions');
-    if (raw == null) return;
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List;
+        setState(() {
+          _sessions = list
+              .map((e) => _ChatSession.fromJson(e as Map<String, dynamic>))
+              .toList();
+          if (_sessions.isNotEmpty) _current = _sessions.first;
+        });
+      } catch (_) {}
+    }
+    // Merge from Firestore for cross-device sync
     try {
-      final list = jsonDecode(raw) as List;
-      setState(() {
-        _sessions = list
-            .map((e) => _ChatSession.fromJson(e as Map<String, dynamic>))
-            .toList();
-        if (_sessions.isNotEmpty) _current = _sessions.first;
-      });
+      final remote = await FirestoreService.loadChatSessions();
+      if (remote != null && remote.isNotEmpty) {
+        final existing = {for (final s in _sessions) s.id: s};
+        for (final j in remote) {
+          final s = _ChatSession.fromJson(j);
+          existing.putIfAbsent(s.id, () => s);
+        }
+        final merged = existing.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        await prefs.setString('cardiva_chat_sessions',
+            jsonEncode(merged.map((s) => s.toJson()).toList()));
+        if (mounted) {
+          setState(() {
+            _sessions = merged;
+            if (_current == null && _sessions.isNotEmpty) {
+              _current = _sessions.first;
+            }
+          });
+        }
+      }
     } catch (_) {}
   }
 
   Future<void> _saveSessions() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'cardiva_chat_sessions',
-      jsonEncode(_sessions.map((s) => s.toJson()).toList()),
-    );
+    final encoded = jsonEncode(_sessions.map((s) => s.toJson()).toList());
+    await prefs.setString('cardiva_chat_sessions', encoded);
+    // Sync to Firestore in background
+    FirestoreService.saveChatSessions(
+      _sessions.map((s) => s.toJson()).toList(),
+    ).catchError((_) {});
   }
 
   // Creates a session without closing any navigator route — safe for programmatic use.

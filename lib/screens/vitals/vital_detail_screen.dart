@@ -1,5 +1,6 @@
 ﻿import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import '../../router/app_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
@@ -241,8 +242,20 @@ class _VitalDetailScreenState extends State<VitalDetailScreen>
                   Align(
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/chat'),
+                      onTap: () {
+                        const query =
+                            'I am reviewing my Heart Rate vital reading.\n'
+                            '• Current: 72 bpm  (Normal range: 60–100 bpm)\n'
+                            '• Min: 58 bpm  |  Max: 89 bpm  |  Avg: 72 bpm\n'
+                            '• Status: Normal\n\n'
+                            'What does this tell me about my cardiovascular health? '
+                            'Should I be concerned about anything?';
+                        Navigator.pushNamed(
+                          context,
+                          AppRouter.chat,
+                          arguments: query,
+                        );
+                      },
                       child: Text(
                         'Ask Cardiva AI →',
                         style: AppTextStyles.caption

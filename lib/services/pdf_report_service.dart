@@ -63,6 +63,15 @@ class PdfReportService {
     return file;
   }
 
+  /// Opens the system share sheet for an already-generated PDF file.
+  static Future<void> shareFile(File file) async {
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: 'application/pdf')],
+      subject: 'Cardiva Daily Health Report',
+      text: 'Please find my Cardiva health report attached.',
+    );
+  }
+
   /// Generates the PDF and opens the system share sheet (WhatsApp, email, etc.).
   static Future<void> shareViaSheet({
     required DailySummary summary,

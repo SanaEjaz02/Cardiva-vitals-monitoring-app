@@ -8,7 +8,6 @@ class FirestoreService {
   FirestoreService._();
 
   static FirebaseFirestore get _db => FirebaseFirestore.instance;
-
   static String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
   static DocumentReference? get _userDoc {
@@ -95,6 +94,26 @@ class FirestoreService {
     return List<Map<String, dynamic>>.from(raw as List);
   }
 
+  // Chat sessions
+
+  static Future<void> saveChatSessions(
+      List<Map<String, dynamic>> sessions) async {
+    final doc = _userDoc;
+    if (doc == null) return;
+    await doc.set({'chat_sessions': sessions}, SetOptions(merge: true));
+  }
+
+  static Future<List<Map<String, dynamic>>?> loadChatSessions() async {
+    final doc = _userDoc;
+    if (doc == null) return null;
+    final snap = await doc.get();
+    if (!snap.exists) return null;
+    final data = snap.data() as Map<String, dynamic>?;
+    final raw = data?['chat_sessions'];
+    if (raw == null) return null;
+    return List<Map<String, dynamic>>.from(raw as List);
+  }
+
   // Analysis history
 
   static Future<List<AnalysisRecord>> loadAnalysisRecords() async {
@@ -143,8 +162,31 @@ class FirestoreService {
         .collection('users')
         .doc(uid)
         .collection('health_reports')
-        .orderBy('created_at', descending: true)
+        .orderBy('createdAt', descending: true)
         .get();
     return snap.docs.map((d) => HealthReport.fromJson(d.data())).toList();
+  }
+
+  static Future<void> updateReportPdfUrl(
+      String reportId, String url) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('health_reports')
+        .doc(reportId)
+        .update({'pdfUrl': url});
+  }
+
+  static Future<void> deleteReport(String reportId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('health_reports')
+        .doc(reportId)
+        .delete();
   }
 }

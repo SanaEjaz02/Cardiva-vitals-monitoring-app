@@ -31,6 +31,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   }
 
   Future<void> _load() async {
+    // Load local immediately
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
     if (raw != null) {
@@ -43,23 +44,18 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           _loading = false;
         });
       }
-    } else {
-      // Nothing local — try Firestore
-      try {
-        final remote = await FirestoreService.loadEmergencyContacts();
-        if (remote != null && remote.isNotEmpty) {
-          final contacts =
-              remote.map((j) => _Contact.fromJson(j)).toList();
-          // Cache locally
-          final prefs2 = await SharedPreferences.getInstance();
-          await prefs2.setString(
-              _storageKey,
-              jsonEncode(contacts.map((c) => c.toJson()).toList()));
-          if (mounted) setState(() => _contacts = contacts);
-        }
-      } catch (_) {}
-      if (mounted) setState(() => _loading = false);
     }
+    // Always sync from Firestore — Firestore is authoritative for cross-device
+    try {
+      final remote = await FirestoreService.loadEmergencyContacts();
+      if (remote != null) {
+        final contacts = remote.map((j) => _Contact.fromJson(j)).toList();
+        await prefs.setString(
+            _storageKey, jsonEncode(contacts.map((c) => c.toJson()).toList()));
+        if (mounted) setState(() => _contacts = contacts);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _save() async {

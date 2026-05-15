@@ -32,6 +32,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
   }
 
   Future<void> _load() async {
+    // Load local immediately
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
     if (raw != null) {
@@ -44,20 +45,18 @@ class _AttendantScreenState extends State<AttendantScreen> {
           _loading = false;
         });
       }
-    } else {
-      // Nothing local — try Firestore
-      try {
-        final remote = await FirestoreService.loadAttendants();
-        if (remote != null && remote.isNotEmpty) {
-          final attendants = remote.map((j) => Attendant.fromJson(j)).toList();
-          final prefs2 = await SharedPreferences.getInstance();
-          await prefs2.setString(_storageKey,
-              jsonEncode(attendants.map((a) => a.toJson()).toList()));
-          if (mounted) setState(() => _attendants = attendants);
-        }
-      } catch (_) {}
-      if (mounted) setState(() => _loading = false);
     }
+    // Always sync from Firestore for cross-device consistency
+    try {
+      final remote = await FirestoreService.loadAttendants();
+      if (remote != null) {
+        final attendants = remote.map((j) => Attendant.fromJson(j)).toList();
+        await prefs.setString(_storageKey,
+            jsonEncode(attendants.map((a) => a.toJson()).toList()));
+        if (mounted) setState(() => _attendants = attendants);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _save() async {

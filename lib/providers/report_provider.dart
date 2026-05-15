@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/analysis_record.dart';
 import '../models/health_report.dart';
 import '../services/firestore_service.dart';
+import '../services/storage_service.dart';
 import 'analysis_provider.dart';
 
 final reportProvider =
@@ -26,7 +27,6 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
 
   Future<void> _init() async {
     await _load();
-    // Auto-create a report for the current day when new analysis records appear
     _ref.listen<List<AnalysisRecord>>(analysisHistoryProvider, (prev, next) {
       if (next.length > (prev?.length ?? 0)) {
         ensureTodayReport();
@@ -35,6 +35,7 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
   }
 
   Future<void> _load() async {
+    // Load local cache first for instant startup
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_key());
@@ -45,15 +46,22 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
             .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       }
-      // If local is empty, pull from Firestore
-      if (state.isEmpty) {
-        final remote = await FirestoreService.loadHealthReports();
-        if (remote.isNotEmpty) {
-          state = remote;
-          final prefs2 = await SharedPreferences.getInstance();
-          await prefs2.setString(
-              _key(), jsonEncode(state.map((r) => r.toJson()).toList()));
+    } catch (_) {}
+    // Always merge from Firestore — picks up reports from other devices
+    try {
+      final remote = await FirestoreService.loadHealthReports();
+      if (remote.isNotEmpty) {
+        final merged = <String, HealthReport>{
+          for (final r in state) r.id: r,
+        };
+        for (final r in remote) {
+          merged[r.id] = r; // Firestore wins (has pdfUrl + latest rename)
         }
+        state = merged.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+            _key(), jsonEncode(state.map((r) => r.toJson()).toList()));
       }
     } catch (_) {}
   }
@@ -63,12 +71,10 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           _key(), jsonEncode(state.map((r) => r.toJson()).toList()));
-      // Sync to Firestore in the background
       FirestoreService.syncHealthReports(state).catchError((_) {});
     } catch (_) {}
   }
 
-  // Creates a report entry for today if one doesn't exist yet
   Future<void> ensureTodayReport() async {
     final dayKey = HealthReport.todayKey();
     if (state.any((r) => r.dayKey == dayKey)) return;
@@ -92,13 +98,25 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
     await _save();
   }
 
-  // Delete report AND its associated analysis records
+  /// Stores the Firebase Storage download URL on the report.
+  Future<void> updatePdfUrl(String reportId, String url) async {
+    state = state
+        .map((r) => r.id == reportId ? r.copyWith(pdfUrl: url) : r)
+        .toList();
+    await _save();
+    FirestoreService.updateReportPdfUrl(reportId, url).catchError((_) {});
+  }
+
   Future<List<AnalysisRecord>> delete(String id) async {
     final report = state.firstWhere((r) => r.id == id);
     state = state.where((r) => r.id != id).toList();
     await _save();
+    // Delete Firestore document and Storage PDF
+    FirestoreService.deleteReport(id).catchError((_) {});
+    if (report.pdfUrl != null) {
+      StorageService.deleteReportPdf(id).catchError((_) {});
+    }
 
-    // Get records for this day before deleting
     final all = _ref.read(analysisHistoryProvider);
     final parts = report.dayKey.split('-');
     final day = DateTime(
@@ -109,12 +127,10 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
             r.timestamp.month == day.month &&
             r.timestamp.day == day.day)
         .toList();
-
     await _ref.read(analysisHistoryProvider.notifier).deleteDayRecords(day);
     return deleted;
   }
 
-  // Restore a deleted report + its records (undo)
   Future<void> restore(
       HealthReport report, List<AnalysisRecord> records) async {
     if (!state.any((r) => r.id == report.id)) {
@@ -125,7 +141,6 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
     await _ref.read(analysisHistoryProvider.notifier).restoreRecords(records);
   }
 
-  // Returns analysis records for a given report
   List<AnalysisRecord> recordsFor(HealthReport report) {
     final all = _ref.read(analysisHistoryProvider);
     final parts = report.dayKey.split('-');

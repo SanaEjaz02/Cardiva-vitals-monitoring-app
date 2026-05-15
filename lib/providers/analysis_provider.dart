@@ -181,10 +181,11 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
   }
 
   Future<void> _loadHistory() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 90));
+    // Load local cache first for instant startup
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_storageKey());
-      final cutoff = DateTime.now().subtract(const Duration(days: 90));
       if (raw != null) {
         final list = jsonDecode(raw) as List;
         state = list
@@ -192,18 +193,24 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
             .where((r) => r.timestamp.isAfter(cutoff))
             .toList();
       }
-      // If local is empty, pull from Firestore
-      if (state.isEmpty) {
-        final remote = await FirestoreService.loadAnalysisRecords();
-        if (remote.isNotEmpty) {
-          state = remote.where((r) => r.timestamp.isAfter(cutoff)).toList();
-          // Cache locally so next launch is instant
-          final prefs2 = await SharedPreferences.getInstance();
-          await prefs2.setString(
-            _storageKey(),
-            jsonEncode(state.map((r) => r.toJson()).toList()),
-          );
+    } catch (_) {}
+    // Always merge from Firestore — picks up records from other devices
+    try {
+      final remote = await FirestoreService.loadAnalysisRecords();
+      if (remote.isNotEmpty) {
+        final merged = <String, AnalysisRecord>{
+          for (final r in state) r.id: r,
+        };
+        for (final r in remote) {
+          if (r.timestamp.isAfter(cutoff)) merged[r.id] = r;
         }
+        state = merged.values.toList()
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _storageKey(),
+          jsonEncode(state.map((r) => r.toJson()).toList()),
+        );
       }
     } catch (_) {}
   }

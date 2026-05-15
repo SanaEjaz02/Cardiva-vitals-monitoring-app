@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../models/alert_class.dart';
 import '../../models/user_profile.dart';
+import '../../providers/analysis_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
@@ -261,15 +263,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 20),
               // ── Stats strip ────────────────────────────────────────
-              const Row(
-                children: [
-                  _StatCard(label: 'Days Monitored', value: '47'),
-                  SizedBox(width: 10),
-                  _StatCard(label: 'Alerts Sent', value: '3'),
-                  SizedBox(width: 10),
-                  _StatCard(label: 'Avg Score', value: '91'),
-                ],
-              ),
+              Builder(builder: (_) {
+                final records = ref.watch(analysisHistoryProvider);
+                final daysMonitored = records
+                    .map((r) =>
+                        '${r.timestamp.year}-${r.timestamp.month}-${r.timestamp.day}')
+                    .toSet()
+                    .length;
+                final alertsSent = records
+                    .where((r) =>
+                        r.prediction.alertClass == AlertClass.emergency ||
+                        r.prediction.alertClass == AlertClass.fallAlert ||
+                        r.prediction.alertClass == AlertClass.vitalsAlert)
+                    .length;
+                final avgScore = records.isEmpty
+                    ? 0
+                    : buildSummaryFromRecords(records).healthScore;
+                return Row(
+                  children: [
+                    _StatCard(
+                        label: 'Days Monitored',
+                        value: '$daysMonitored'),
+                    const SizedBox(width: 10),
+                    _StatCard(label: 'Alerts Sent', value: '$alertsSent'),
+                    const SizedBox(width: 10),
+                    _StatCard(label: 'Avg Score', value: '$avgScore'),
+                  ],
+                );
+              }),
               const SizedBox(height: 24),
               // ── Health & Safety ────────────────────────────────────
               _GroupCard(
