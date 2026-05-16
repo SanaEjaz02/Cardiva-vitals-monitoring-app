@@ -10,8 +10,7 @@ import 'history/history_screen.dart';
 import 'profile/profile_screen.dart';
 import 'emergency/emergency_popup.dart';
 
-// Page layout:  0=AI  1=Dashboard  2=Vitals  3=History  4=Profile
-// Swipe right from Dashboard to reveal the AI screen.
+// Page layout: 0=Dashboard  1=Vitals  2=AI  3=History  4=Profile
 
 class MainNavScreen extends StatefulWidget {
   const MainNavScreen({super.key});
@@ -22,39 +21,23 @@ class MainNavScreen extends StatefulWidget {
 
 class _MainNavScreenState extends State<MainNavScreen> {
   late final PageController _pageController;
-  int _currentPage = 1;
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: 1);
+    _pageController = PageController(initialPage: 0);
     _pageController.addListener(_onScroll);
   }
 
   void _onScroll() {
-    final page = _pageController.page?.round() ?? 1;
+    final page = _pageController.page?.round() ?? 0;
     if (page != _currentPage) setState(() => _currentPage = page);
   }
 
-  void _switchTab(int navIndex) {
+  void _switchTab(int index) {
     _pageController.animateToPage(
-      navIndex + 1,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _goToAi() {
-    _pageController.animateToPage(
-      0,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _backToDashboard() {
-    _pageController.animateToPage(
-      1,
+      index,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeInOut,
     );
@@ -67,8 +50,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     super.dispose();
   }
 
-  bool get _showNav => _currentPage > 0;
-  int get _navIndex => (_currentPage - 1).clamp(0, 3);
+  int get _navIndex => _currentPage.clamp(0, 4);
 
   @override
   Widget build(BuildContext context) {
@@ -78,14 +60,14 @@ class _MainNavScreenState extends State<MainNavScreen> {
         controller: _pageController,
         physics: const ClampingScrollPhysics(),
         children: [
-          VitalsAiScreen(onBack: _backToDashboard),
-          DashboardScreen(onSwitchTab: _switchTab, onOpenAi: _goToAi),
-          VitalsScreen(onOpenAi: _goToAi),
+          DashboardScreen(onSwitchTab: _switchTab),
+          const VitalsScreen(),
+          const VitalsAiScreen(),
           const HistoryScreen(),
           const ProfileScreen(),
         ],
       ),
-      floatingActionButton: _showNav && _currentPage <= 2
+      floatingActionButton: _currentPage <= 1
           ? GestureDetector(
               onLongPress: () => EmergencyPopup.show(context, 'manual'),
               child: CardivaFab(
@@ -94,12 +76,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _showNav
-          ? CardivaBottomNav(
-              activeIndex: _navIndex,
-              onTap: _switchTab,
-            )
-          : null,
+      bottomNavigationBar: CardivaBottomNav(
+        activeIndex: _navIndex,
+        onTap: _switchTab,
+      ),
     );
   }
 }
