@@ -15,6 +15,7 @@ class CardivaBottomNav extends StatelessWidget {
   static const _items = [
     _NavItem(Icons.dashboard_rounded, Icons.dashboard_outlined, 'Dashboard'),
     _NavItem(Icons.favorite_rounded, Icons.favorite_border_rounded, 'Vitals'),
+    _NavItem(Icons.monitor_heart_rounded, Icons.monitor_heart_outlined, 'AI Analysis'),
     _NavItem(Icons.bar_chart_rounded, Icons.bar_chart_outlined, 'History'),
     _NavItem(Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
   ];
