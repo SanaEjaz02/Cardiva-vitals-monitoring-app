@@ -189,4 +189,32 @@ class FirestoreService {
         .doc(reportId)
         .delete();
   }
+
+  // Feedback
+
+  static Future<void> saveFeedback({
+    required String userId,
+    required String userEmail,
+    required String userName,
+    required int rating,
+    required String category,
+    required String message,
+  }) async {
+    try {
+      debugPrint('[Firestore] saveFeedback — uid=$userId rating=$rating category=$category');
+      await _db.collection('feedback').add({
+        'userId': userId,
+        'userEmail': userEmail,
+        'userName': userName,
+        'rating': rating,
+        'category': category,
+        'message': message,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint('[Firestore] saveFeedback — success');
+    } catch (e) {
+      debugPrint('[Firestore] saveFeedback — ERROR: $e');
+      rethrow;
+    }
+  }
 }
