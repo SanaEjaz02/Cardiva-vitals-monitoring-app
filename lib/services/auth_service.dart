@@ -52,8 +52,6 @@ class AuthService {
   }
 
   static Future<void> signOut() async {
-    // Sign out from both Firebase and Google so the Google account picker
-    // re-appears on the next Google sign-in attempt instead of auto-selecting.
     await Future.wait([
       _auth.signOut(),
       _googleSignIn.signOut(),

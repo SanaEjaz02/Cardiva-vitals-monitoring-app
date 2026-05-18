@@ -7,20 +7,8 @@ import '../models/emergency_contact.dart';
 import '../models/user_profile.dart';
 import '../services/firestore_service.dart';
 
-final _demoUser = UserProfile(
-  id: 'demo-user-001',
-  name: 'Demo User',
-  email: 'demo@cardiva.app',
-  phone: '+1234567890',
-  dateOfBirth: DateTime(1990, 6, 15),
-  gender: 'Male',
-  bloodGroup: 'A+',
-  heightCm: 170.0,
-  weightKg: 70.0,
-);
-
 class UserNotifier extends StateNotifier<UserProfile?> {
-  UserNotifier() : super(_demoUser);
+  UserNotifier() : super(null);
 
   void setUser(UserProfile profile) => state = profile;
   void clearUser() => state = null;

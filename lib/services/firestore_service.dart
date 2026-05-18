@@ -189,4 +189,25 @@ class FirestoreService {
         .doc(reportId)
         .delete();
   }
+
+  // Deletes all user data from Firestore (profile doc + subcollections)
+  static Future<void> deleteAccount() async {
+    final uid = _uid;
+    if (uid == null) return;
+    final userRef = _db.collection('users').doc(uid);
+    // Delete subcollections first
+    final batch = _db.batch();
+    final historySnap =
+        await userRef.collection('analysis_history').get();
+    for (final d in historySnap.docs) {
+      batch.delete(d.reference);
+    }
+    final reportsSnap =
+        await userRef.collection('health_reports').get();
+    for (final d in reportsSnap.docs) {
+      batch.delete(d.reference);
+    }
+    batch.delete(userRef);
+    await batch.commit();
+  }
 }

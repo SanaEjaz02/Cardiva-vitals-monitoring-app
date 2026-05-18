@@ -134,6 +134,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Future<void> _deleteAccount() async {
+    // Step 1 — wipe Firestore data
+    try {
+      await FirestoreService.deleteAccount();
+    } catch (_) {}
+
+    // Step 2 — wipe local cache
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (_) {}
+
+    // Step 3 — delete Firebase Auth user (requires recent login)
+    try {
+      await AuthService.currentUser?.delete();
+    } on FirebaseAuthException catch (e) {
+      // If re-auth is needed just sign out — data is already gone
+      if (e.code == 'requires-recent-login') {
+        await AuthService.signOut();
+      }
+    } catch (_) {
+      await AuthService.signOut();
+    }
+
+    // Step 4 — always navigate to auth screen
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(
+          context, AppRouter.auth, (_) => false);
+    }
+  }
+
+  void _confirmDeleteAccount() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Delete Account?', style: AppTextStyles.h2),
+        content: Text(
+          'This will permanently delete your account and all health data including vitals history, reports, and contacts. This cannot be undone.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteAccount();
+            },
+            child: Text('Delete Forever',
+                style: AppTextStyles.body.copyWith(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _confirmLogout() {
     showDialog(
       context: context,
@@ -371,6 +430,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Log Out',
                     labelColor: AppColors.danger,
                     onTap: _confirmLogout,
+                    showChevron: false,
+                  ),
+                  _ProfileRow(
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Delete Account',
+                    labelColor: AppColors.danger,
+                    onTap: _confirmDeleteAccount,
                     last: true,
                     showChevron: false,
                   ),
@@ -703,7 +769,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
           // ── Gender ────────────────────────────────────────────────
           DropdownButtonFormField<String>(
-            value: _genders.contains(_gender) ? _gender : _genders.first,
+            initialValue: _genders.contains(_gender) ? _gender : _genders.first,
             decoration: InputDecoration(
               labelText: 'Gender',
               prefixIcon: const Icon(Icons.wc_rounded,
@@ -720,7 +786,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
           // ── Blood Group ───────────────────────────────────────────
           DropdownButtonFormField<String>(
-            value: _bloodGroups.contains(_bloodGroup)
+            initialValue: _bloodGroups.contains(_bloodGroup)
                 ? _bloodGroup
                 : _bloodGroups.first,
             decoration: InputDecoration(

@@ -160,24 +160,31 @@ class _AuthScreenState extends State<AuthScreen>
     try {
       final result = await AuthService.signInWithGoogle();
       if (result == null) {
-        // user cancelled — just stop loading
         if (mounted) setState(() => _loading = false);
         return;
       }
       if (!mounted) return;
-      final email = result.user?.email ?? '';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Signed in as $email'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(milliseconds: 1800),
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 1800));
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, AppRouter.dashboard);
-      // widget is disposed after this — do not setState in finally
+      final isNew = result.additionalUserInfo?.isNewUser ?? false;
+      if (isNew) {
+        // Pre-fill display name from Google profile
+        await result.user?.updateDisplayName(
+            result.additionalUserInfo?.profile?['name'] as String? ?? '');
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRouter.setupProfile);
+      } else {
+        final email = result.user?.email ?? '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Signed in as $email'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(milliseconds: 1500),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
       if (mounted) setState(() => _loading = false);
