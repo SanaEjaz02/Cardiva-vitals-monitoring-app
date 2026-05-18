@@ -62,7 +62,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       ref.read(userProvider.notifier).setUser(profile);
       // Save to Firestore + SharedPreferences
       final profileJson = profile.toJson();
-      FirestoreService.saveProfile(profileJson).catchError((_) {});
+      FirestoreService.saveProfile(profileJson).catchError((e) {
+        debugPrint('[ProfileSetup] Firestore saveProfile failed: $e');
+      });
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
     } catch (_) {}
