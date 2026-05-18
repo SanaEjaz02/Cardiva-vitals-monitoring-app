@@ -195,19 +195,44 @@ class FirestoreService {
     final uid = _uid;
     if (uid == null) return;
     final userRef = _db.collection('users').doc(uid);
-    // Delete subcollections first
     final batch = _db.batch();
-    final historySnap =
-        await userRef.collection('analysis_history').get();
+    final historySnap = await userRef.collection('analysis_history').get();
     for (final d in historySnap.docs) {
       batch.delete(d.reference);
     }
-    final reportsSnap =
-        await userRef.collection('health_reports').get();
+    final reportsSnap = await userRef.collection('health_reports').get();
     for (final d in reportsSnap.docs) {
       batch.delete(d.reference);
     }
     batch.delete(userRef);
     await batch.commit();
+  }
+
+  // Feedback
+
+  static Future<void> saveFeedback({
+    required String userId,
+    required String userEmail,
+    required String userName,
+    required int rating,
+    required String category,
+    required String message,
+  }) async {
+    try {
+      debugPrint('[Firestore] saveFeedback — uid=$userId rating=$rating category=$category');
+      await _db.collection('feedback').add({
+        'userId': userId,
+        'userEmail': userEmail,
+        'userName': userName,
+        'rating': rating,
+        'category': category,
+        'message': message,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint('[Firestore] saveFeedback — success');
+    } catch (e) {
+      debugPrint('[Firestore] saveFeedback — ERROR: $e');
+      rethrow;
+    }
   }
 }

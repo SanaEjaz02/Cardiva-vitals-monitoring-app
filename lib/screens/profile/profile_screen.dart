@@ -17,6 +17,7 @@ import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
+import 'feedback_sheet.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -418,6 +419,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Help & Support',
                     onTap: () => Navigator.pushNamed(
                         context, AppRouter.helpSupport),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.rate_review_rounded,
+                    label: 'Send Feedback',
+                    onTap: () => showFeedbackSheet(context),
                   ),
                   _ProfileRow(
                     icon: Icons.settings_outlined,
