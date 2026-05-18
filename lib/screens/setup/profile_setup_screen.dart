@@ -60,13 +60,22 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       }
       // Save to Riverpod state
       ref.read(userProvider.notifier).setUser(profile);
-      // Save to Firestore + SharedPreferences
+      // Save locally first (instant)
       final profileJson = profile.toJson();
-      FirestoreService.saveProfile(profileJson).catchError((e) {
-        debugPrint('[ProfileSetup] Firestore saveProfile failed: $e');
-      });
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
+      // Await Firestore save — retries once if the first attempt fails
+      // (Firestore connection may reset briefly after a previous account deletion)
+      try {
+        await FirestoreService.saveProfile(profileJson);
+      } catch (_) {
+        await Future.delayed(const Duration(seconds: 2));
+        try {
+          await FirestoreService.saveProfile(profileJson);
+        } catch (e) {
+          debugPrint('[ProfileSetup] Firestore saveProfile failed after retry: $e');
+        }
+      }
     } catch (_) {}
     if (!mounted) return;
     setState(() => _saving = false);

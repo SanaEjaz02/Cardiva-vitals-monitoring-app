@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -97,10 +98,15 @@ class _ChatbotScreenState extends State<ChatbotScreen>
 
   // ── Session persistence ────────────────────────────────────────────────
 
+  String get _chatKey {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    return 'cardiva_chat_sessions_${uid}_v1';
+  }
+
   Future<void> _loadSessions() async {
     // Load from local first
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('cardiva_chat_sessions');
+    final raw = prefs.getString(_chatKey);
     if (raw != null) {
       try {
         final list = jsonDecode(raw) as List;
@@ -123,7 +129,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
         }
         final merged = existing.values.toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        await prefs.setString('cardiva_chat_sessions',
+        await prefs.setString(_chatKey,
             jsonEncode(merged.map((s) => s.toJson()).toList()));
         if (mounted) {
           setState(() {
@@ -140,7 +146,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   Future<void> _saveSessions() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(_sessions.map((s) => s.toJson()).toList());
-    await prefs.setString('cardiva_chat_sessions', encoded);
+    await prefs.setString(_chatKey, encoded);
     // Sync to Firestore in background
     FirestoreService.saveChatSessions(
       _sessions.map((s) => s.toJson()).toList(),
