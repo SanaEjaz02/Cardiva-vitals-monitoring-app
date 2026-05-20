@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 import '../models/emergency_contact.dart';
 import '../models/user_profile.dart';
 import '../services/firestore_service.dart';
@@ -44,19 +43,35 @@ final userProvider = StateNotifierProvider<UserNotifier, UserProfile?>(
   (ref) => UserNotifier(),
 );
 
-// Emergency contacts notifier (legacy in-memory — real data lives in SharedPreferences/Firestore)
 class EmergencyContactsNotifier extends StateNotifier<List<EmergencyContact>> {
-  EmergencyContactsNotifier()
-      : super([
-          EmergencyContact(
-            id: const Uuid().v4(),
-            userId: 'demo-user-001',
-            name: 'Sarah Demo',
-            phone: '+0987654321',
-            relation: 'Family',
-            isPrimary: true,
-          ),
-        ]);
+  EmergencyContactsNotifier() : super([]);
+
+  static String _key(String uid) => 'emergency_contacts_${uid}_v1';
+
+  /// Loads contacts on login: SharedPreferences first, then Firestore fallback.
+  Future<void> loadFromStore() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key(uid));
+      if (raw != null) {
+        final list = jsonDecode(raw) as List;
+        state = list
+            .map((j) => EmergencyContact.fromJson(
+                Map<String, dynamic>.from(j as Map)))
+            .toList();
+      }
+      // Always sync from Firestore
+      final remote = await FirestoreService.loadEmergencyContacts();
+      if (remote != null && remote.isNotEmpty) {
+        state = remote
+            .map((j) => EmergencyContact.fromJson(j))
+            .toList();
+        await prefs.setString(_key(uid), jsonEncode(remote));
+      }
+    } catch (_) {}
+  }
 
   void add(EmergencyContact contact) => state = [...state, contact];
 

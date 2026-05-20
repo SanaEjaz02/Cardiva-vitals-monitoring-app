@@ -27,6 +27,9 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
 
   Future<void> _init() async {
     await _load();
+    // Auto-create today's report if analysis records already exist for today
+    await ensureTodayReport();
+    // Also trigger whenever new records are added during the session
     _ref.listen<List<AnalysisRecord>>(analysisHistoryProvider, (prev, next) {
       if (next.length > (prev?.length ?? 0)) {
         ensureTodayReport();
@@ -78,7 +81,13 @@ class ReportNotifier extends StateNotifier<List<HealthReport>> {
   Future<void> ensureTodayReport() async {
     final dayKey = HealthReport.todayKey();
     if (state.any((r) => r.dayKey == dayKey)) return;
+    // Only create a report if there are actual analysis records for today
     final now = DateTime.now();
+    final hasTodayRecords = _ref.read(analysisHistoryProvider).any((r) =>
+        r.timestamp.year == now.year &&
+        r.timestamp.month == now.month &&
+        r.timestamp.day == now.day);
+    if (!hasTodayRecords) return;
     final report = HealthReport(
       id: now.millisecondsSinceEpoch.toString(),
       name: HealthReport.defaultName(now),

@@ -19,12 +19,14 @@ class EmergencyContact {
 
   factory EmergencyContact.fromJson(Map<String, dynamic> json) =>
       EmergencyContact(
-        id: json['id'] as String,
-        userId: json['user_id'] as String,
-        name: json['name'] as String,
-        phone: json['phone'] as String,
-        relation: json['relation'] as String? ?? '',
-        isPrimary: json['is_primary'] as bool? ?? false,
+        id: json['id'] as String? ?? const Uuid().v4(),
+        // saved by setup screen as 'user_id' or omitted entirely
+        userId: (json['user_id'] ?? json['userId'] ?? '') as String,
+        name: json['name'] as String? ?? '',
+        phone: json['phone'] as String? ?? '',
+        // setup screen saves 'relationship'; older records use 'relation'
+        relation: (json['relationship'] ?? json['relation'] ?? '') as String,
+        isPrimary: json['is_primary'] as bool? ?? json['isPrimary'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {

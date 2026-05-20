@@ -35,8 +35,12 @@ class _MainNavScreenState extends ConsumerState<MainNavScreen> {
     // This handles the case where the user logged in via the auth screen
     // (which doesn't call loadFromStore) or switched accounts.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(userProvider.notifier).loadFromStore();
-      await ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser();
+      // Run independent loads in parallel for faster startup
+      await Future.wait([
+        ref.read(userProvider.notifier).loadFromStore(),
+        ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser(),
+        ref.read(emergencyContactsProvider.notifier).loadFromStore(),
+      ]);
     });
   }
 
