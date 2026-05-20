@@ -34,6 +34,22 @@ class StorageService {
     } catch (_) {}
   }
 
+  /// Uploads the user's profile photo and returns its download URL, or null on failure.
+  static Future<String?> uploadProfilePhoto(File file) async {
+    final uid = _uid;
+    if (uid == null) return null;
+    try {
+      final ref = _storage.ref('users/$uid/profile/avatar.jpg');
+      final task = await ref.putFile(
+        file,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      return await task.ref.getDownloadURL();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Opens a Storage download URL in the external browser/PDF viewer.
   static Future<void> openDownloadUrl(String url) async {
     final uri = Uri.parse(url);

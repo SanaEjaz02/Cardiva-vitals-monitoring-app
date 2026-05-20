@@ -1,5 +1,6 @@
 ﻿import 'dart:convert';
 import 'dart:io';
+import '../../services/storage_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,6 +26,63 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+
+  /// Opens the edit-profile sheet from anywhere (e.g. the side panel).
+  static Future<void> openEditSheet(BuildContext context, WidgetRef ref) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final userProfile = ref.read(userProvider);
+    // Capture the notifier NOW — synchronously, before any await or widget
+    // disposal. The WidgetRef from the side panel becomes invalid once the
+    // panel is popped, so using ref inside an async callback would silently
+    // fail. UserNotifier itself outlives any widget.
+    final notifier = ref.read(userProvider.notifier);
+    final prefs = await SharedPreferences.getInstance();
+    final photoPath = prefs.getString('profile_photo_path');
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.bgWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditProfileSheet(
+        currentName: user?.displayName ?? 'Patient',
+        currentPhotoPath: photoPath,
+        currentProfile: userProfile,
+        onSave: (name, path, updated) async {
+          if (name.isNotEmpty && name != user?.displayName) {
+            user?.updateDisplayName(name);
+          }
+          final p = await SharedPreferences.getInstance();
+          if (path != null) {
+            await p.setString('profile_photo_path', path);
+          } else {
+            await p.remove('profile_photo_path');
+          }
+          if (updated != null) {
+            notifier.updateProfile(updated);
+            FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            await p.setString('user_profile_$uid', jsonEncode(updated.toJson()));
+            if (path != null) {
+              StorageService.uploadProfilePhoto(File(path)).then((uploadedUrl) {
+                if (uploadedUrl != null) {
+                  final withPhoto = updated.copyWith(photoUrl: uploadedUrl);
+                  notifier.updateProfile(withPhoto);
+                  FirestoreService.saveProfile(withPhoto.toJson())
+                      .catchError((_) {});
+                  p.setString(
+                      'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                }
+              });
+            }
+          }
+        },
+      ),
+    );
+  }
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
@@ -112,7 +170,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         currentProfile: userProfile,
         onSave: (name, photoPath, updatedProfile) async {
           if (name.isNotEmpty && name != _user?.displayName) {
-            await _user?.updateDisplayName(name);
+            _user?.updateDisplayName(name);
           }
           final prefs = await SharedPreferences.getInstance();
           if (photoPath != null) {
@@ -121,15 +179,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             await prefs.remove('profile_photo_path');
           }
           if (mounted) setState(() => _photoPath = photoPath);
-
-          // Persist updated profile to Riverpod and Firestore
           if (updatedProfile != null) {
+            // Save immediately so UI updates without waiting for upload
             ref.read(userProvider.notifier).updateProfile(updatedProfile);
-            FirestoreService.saveProfile(updatedProfile.toJson()).catchError((_) {});
-            // Save to SharedPreferences for offline access
+            FirestoreService.saveProfile(updatedProfile.toJson())
+                .catchError((_) {});
             final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await prefs.setString(
                 'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
+            // Upload photo to Firebase Storage in background
+            if (photoPath != null) {
+              StorageService.uploadProfilePhoto(File(photoPath))
+                  .then((uploadedUrl) {
+                if (uploadedUrl != null) {
+                  final withPhoto =
+                      updatedProfile.copyWith(photoUrl: uploadedUrl);
+                  ref.read(userProvider.notifier).updateProfile(withPhoto);
+                  FirestoreService.saveProfile(withPhoto.toJson())
+                      .catchError((_) {});
+                  prefs.setString(
+                      'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                }
+              });
+            }
           }
         },
       ),
@@ -327,6 +399,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userProfile = ref.watch(userProvider);
+    // Network photo: uploaded URL > Google sign-in photo
+    final networkPhoto =
+        userProfile?.photoUrl ?? _user?.photoURL;
+
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -349,8 +426,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             backgroundColor: AppColors.primaryDeep,
                             backgroundImage: _photoPath != null
                                 ? FileImage(File(_photoPath!))
-                                : null,
-                            child: _photoPath == null
+                                    as ImageProvider
+                                : networkPhoto != null
+                                    ? NetworkImage(networkPhoto)
+                                    : null,
+                            child: _photoPath == null && networkPhoto == null
                                 ? Text(
                                     _initial,
                                     style: AppTextStyles.h1White()
@@ -920,7 +1000,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 child: ElevatedButton(
                   onPressed: _saving
                       ? null
-                      : () async {
+                      : () {
                           setState(() => _saving = true);
                           final resultPath = _photoRemoved ? null : _photoPath;
                           final nav = Navigator.of(context);
@@ -944,18 +1024,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             heightCm: heightCm,
                             weightKg: weightKg,
                           );
-                          await widget.onSave(
+                          // Close immediately — onSave runs in background
+                          nav.pop();
+                          widget.onSave(
                               _nameCtrl.text.trim(), resultPath, updated);
-                          if (mounted) nav.pop();
                         },
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Save'),
+                  child: const Text('Save'),
                 ),
               ),
             ],

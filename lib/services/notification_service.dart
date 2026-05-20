@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/notification_model.dart';
 
 class NotificationService {
   NotificationService._();
@@ -14,7 +17,10 @@ class NotificationService {
   static const _chEmergency = 'cardiva_emergency';
   static const _chWarning   = 'cardiva_warning';
 
-  // ── Init ────────────────────────────────────────────────────────────────────
+  /// Foreground callback — set by NotificationsNotifier to receive in-app notifs.
+  static void Function(AppNotification)? onNewNotification;
+
+  // ── Init ─────────────────────────────────────────────────────────────────
 
   static Future<void> initialize() async {
     const androidSettings =
@@ -26,7 +32,6 @@ class NotificationService {
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
-    // Create notification channels
     await android?.createNotificationChannel(
       const AndroidNotificationChannel(
         _chEmergency,
@@ -51,11 +56,10 @@ class NotificationService {
       ),
     );
 
-    // Request permission on Android 13+
     await android?.requestNotificationsPermission();
   }
 
-  // ── Emergency notification (full-screen, max priority) ────────────────────
+  // ── Emergency notification ────────────────────────────────────────────────
 
   static Future<void> showEmergencyNotification(
     String title,
@@ -69,8 +73,6 @@ class NotificationService {
         importance: Importance.max,
         priority: Priority.max,
         fullScreenIntent: true,
-        // Do NOT use AndroidNotificationCategory.alarm — alarm category
-        // prevents the user from dismissing the notification.
         category: AndroidNotificationCategory.status,
         autoCancel: true,
         ticker: 'CARDIVA Emergency',
@@ -79,9 +81,10 @@ class NotificationService {
       ),
     );
     await _plugin.show(_idEmergency, title, body, details);
+    _pushInApp(title, body, NotifType.alert);
   }
 
-  // ── Warning notification ───────────────────────────────────────────────────
+  // ── Warning notification ──────────────────────────────────────────────────
 
   static Future<void> showWarningNotification(
     String title,
@@ -99,11 +102,41 @@ class NotificationService {
       ),
     );
     await _plugin.show(_idWarning, title, body, details);
+    _pushInApp(title, body, NotifType.health);
   }
 
   // ── Cancel all ────────────────────────────────────────────────────────────
 
   static Future<void> cancelAll() async {
     await _plugin.cancelAll();
+  }
+
+  // ── Internal: push to in-app notification list ────────────────────────────
+
+  static void _pushInApp(String title, String body, NotifType type) {
+    final notif = AppNotification(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
+      subtitle: body,
+      type: type,
+    );
+    // Foreground: deliver directly via callback
+    if (onNewNotification != null) {
+      onNewNotification!(notif);
+      return;
+    }
+    // Background/isolate: queue in SharedPreferences for next app open
+    _queuePending(notif);
+  }
+
+  static Future<void> _queuePending(AppNotification notif) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'pending_notifications';
+      final raw = prefs.getString(key) ?? '[]';
+      final list = jsonDecode(raw) as List;
+      list.add(notif.toJson());
+      await prefs.setString(key, jsonEncode(list));
+    } catch (_) {}
   }
 }

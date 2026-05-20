@@ -34,6 +34,31 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   _Tab _tab = _Tab.all;
 
+  void _confirmClearAll(
+      BuildContext context, NotificationsNotifier notifier) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all notifications?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            onPressed: () {
+              Navigator.pop(ctx);
+              notifier.deleteAll();
+            },
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<AppNotification> _filtered(List<AppNotification> all) {
     final type = _tab.type;
     if (type == null) return all;
@@ -64,7 +89,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ),
         title: Text('Notifications', style: AppTextStyles.h1),
         actions: [
-          // Per-category mute toggle — only shown when on a specific tab
           if (activeType != null)
             IconButton(
               tooltip:
@@ -78,13 +102,28 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               ),
               onPressed: () => notifier.toggleMuted(activeType),
             ),
-          TextButton(
-            onPressed: () => notifier.markAllRead(),
-            child: Text(
-              'Mark all read',
-              style:
-                  AppTextStyles.caption.copyWith(color: AppColors.primary),
-            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, size: 22),
+            onSelected: (value) {
+              if (value == 'mark_read') {
+                notifier.markAllRead();
+              } else if (value == 'clear_all') {
+                _confirmClearAll(context, notifier);
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem<String>(
+                value: 'mark_read',
+                child: Text('Mark all as read'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'clear_all',
+                child: Text(
+                  'Clear all',
+                  style: TextStyle(color: AppColors.danger),
+                ),
+              ),
+            ],
           ),
         ],
       ),

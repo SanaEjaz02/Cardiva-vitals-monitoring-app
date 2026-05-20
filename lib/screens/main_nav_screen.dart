@@ -35,8 +35,12 @@ class _MainNavScreenState extends ConsumerState<MainNavScreen> {
     // This handles the case where the user logged in via the auth screen
     // (which doesn't call loadFromStore) or switched accounts.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(userProvider.notifier).loadFromStore();
-      await ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser();
+      // Run independent loads in parallel for faster startup
+      await Future.wait([
+        ref.read(userProvider.notifier).loadFromStore(),
+        ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser(),
+        ref.read(emergencyContactsProvider.notifier).loadFromStore(),
+      ]);
     });
   }
 
@@ -64,31 +68,37 @@ class _MainNavScreenState extends ConsumerState<MainNavScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgLight,
-      body: PageView(
-        controller: _pageController,
-        physics: const ClampingScrollPhysics(),
-        children: [
-          DashboardScreen(onSwitchTab: _switchTab),
-          const VitalsScreen(),
-          const VitalsAiScreen(),
-          const HistoryScreen(),
-          const ProfileScreen(),
-        ],
-      ),
-      floatingActionButton: _currentPage <= 1
-          ? GestureDetector(
-              onLongPress: () => EmergencyPopup.show(context, 'manual'),
-              child: CardivaFab(
-                onTap: () => Navigator.pushNamed(context, AppRouter.chat),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: CardivaBottomNav(
-        activeIndex: _navIndex,
-        onTap: _switchTab,
+    return PopScope(
+      canPop: _currentPage == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _switchTab(0);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bgLight,
+        body: PageView(
+          controller: _pageController,
+          physics: const ClampingScrollPhysics(),
+          children: [
+            DashboardScreen(onSwitchTab: _switchTab),
+            const VitalsScreen(),
+            const VitalsAiScreen(),
+            const HistoryScreen(),
+            const ProfileScreen(),
+          ],
+        ),
+        floatingActionButton: _currentPage <= 1
+            ? GestureDetector(
+                onLongPress: () => EmergencyPopup.show(context, 'manual'),
+                child: CardivaFab(
+                  onTap: () => Navigator.pushNamed(context, AppRouter.chat),
+                ),
+              )
+            : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: CardivaBottomNav(
+          activeIndex: _navIndex,
+          onTap: _switchTab,
+        ),
       ),
     );
   }
