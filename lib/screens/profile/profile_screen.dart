@@ -18,6 +18,7 @@ import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import 'feedback_sheet.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -131,6 +132,161 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
           }
         },
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    if (!mounted) return;
+
+    final progress = ValueNotifier<double>(0.0);
+    final statusMsg = ValueNotifier<String>('Deleting your health data...');
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: ValueListenableBuilder<double>(
+                valueListenable: progress,
+                builder: (_, pct, __) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.delete_forever_rounded,
+                        color: AppColors.danger, size: 36),
+                    const SizedBox(height: 16),
+                    Text('Deleting Account',
+                        style: AppTextStyles.h2),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: 220,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: pct,
+                          minHeight: 8,
+                          backgroundColor: AppColors.bgLight,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppColors.danger),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text('${(pct * 100).toInt()}%',
+                        style: AppTextStyles.h2
+                            .copyWith(color: AppColors.danger)),
+                    const SizedBox(height: 6),
+                    ValueListenableBuilder<String>(
+                      valueListenable: statusMsg,
+                      builder: (_, msg, __) => Text(msg,
+                          style: AppTextStyles.caption,
+                          textAlign: TextAlign.center),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Step 1 (0–50%): delete Firestore data + clear local cache in parallel
+    // Timeout guards against Firestore connection drops (UNAVAILABLE errors)
+    statusMsg.value = 'Deleting your health data...';
+    await Future.wait([
+      FirestoreService.deleteAccount()
+          .timeout(const Duration(seconds: 8))
+          .catchError((_) => null),
+      SharedPreferences.getInstance()
+          .then((p) => p.clear())
+          .catchError((_) => false),
+    ]);
+    progress.value = 0.5;
+
+    // Step 2 (50–70%): clear in-memory state
+    statusMsg.value = 'Clearing local data...';
+    if (mounted) ref.read(userProvider.notifier).clearUser();
+    await Future.delayed(const Duration(milliseconds: 300));
+    progress.value = 0.7;
+
+    // Step 3 (70–90%): delete Firebase Auth user
+    statusMsg.value = 'Removing your account...';
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final providers =
+          user.providerData.map((p) => p.providerId).toList();
+      try {
+        await user.delete();
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'requires-recent-login') {
+          try {
+            if (providers.contains('google.com')) {
+              final googleSignIn = GoogleSignIn();
+              final googleUser = await googleSignIn.signInSilently() ??
+                  await googleSignIn.signIn();
+              if (googleUser != null) {
+                final auth = await googleUser.authentication;
+                final credential = GoogleAuthProvider.credential(
+                  accessToken: auth.accessToken,
+                  idToken: auth.idToken,
+                );
+                await user.reauthenticateWithCredential(credential);
+                await user.delete();
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    progress.value = 0.9;
+
+    // Step 4 (90–100%): sign out
+    statusMsg.value = 'Signing out...';
+    try {
+      await AuthService.signOut();
+    } catch (_) {}
+    progress.value = 1.0;
+    statusMsg.value = 'Done!';
+
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    if (mounted) {
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRouter.auth, (_) => false);
+    }
+  }
+
+  void _confirmDeleteAccount() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Delete Account?', style: AppTextStyles.h2),
+        content: Text(
+          'This will permanently delete your account and all health data. This cannot be undone.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteAccount();
+            },
+            child: Text('Delete Forever',
+                style: AppTextStyles.body.copyWith(color: AppColors.danger)),
+          ),
+        ],
       ),
     );
   }
@@ -377,6 +533,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Log Out',
                     labelColor: AppColors.danger,
                     onTap: _confirmLogout,
+                    showChevron: false,
+                  ),
+                  _ProfileRow(
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Delete Account',
+                    labelColor: AppColors.danger,
+                    onTap: _confirmDeleteAccount,
                     last: true,
                     showChevron: false,
                   ),
@@ -709,7 +872,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
           // ── Gender ────────────────────────────────────────────────
           DropdownButtonFormField<String>(
-            value: _genders.contains(_gender) ? _gender : _genders.first,
+            initialValue: _genders.contains(_gender) ? _gender : _genders.first,
             decoration: InputDecoration(
               labelText: 'Gender',
               prefixIcon: const Icon(Icons.wc_rounded,
@@ -726,7 +889,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
           // ── Blood Group ───────────────────────────────────────────
           DropdownButtonFormField<String>(
-            value: _bloodGroups.contains(_bloodGroup)
+            initialValue: _bloodGroups.contains(_bloodGroup)
                 ? _bloodGroup
                 : _bloodGroups.first,
             decoration: InputDecoration(

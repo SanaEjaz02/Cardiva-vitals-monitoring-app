@@ -69,7 +69,10 @@ class NotificationService {
         importance: Importance.max,
         priority: Priority.max,
         fullScreenIntent: true,
-        category: AndroidNotificationCategory.alarm,
+        // Do NOT use AndroidNotificationCategory.alarm — alarm category
+        // prevents the user from dismissing the notification.
+        category: AndroidNotificationCategory.status,
+        autoCancel: true,
         ticker: 'CARDIVA Emergency',
         styleInformation: BigTextStyleInformation(''),
         color: Color(0xFFEF4444),
@@ -91,6 +94,7 @@ class NotificationService {
         channelDescription: 'Health warning requiring attention.',
         importance: Importance.high,
         priority: Priority.high,
+        autoCancel: true,
         color: Color(0xFFF59E0B),
       ),
     );

@@ -1,8 +1,11 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
@@ -24,6 +27,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final _weightCtrl = TextEditingController();
   String? _bloodType;
 
+  bool _saving = false;
+
   bool get _isValid =>
       _nameCtrl.text.isNotEmpty &&
       _dob != null &&
@@ -31,6 +36,51 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       _heightCtrl.text.isNotEmpty &&
       _weightCtrl.text.isNotEmpty &&
       _bloodType != null;
+
+  Future<void> _submit() async {
+    setState(() => _saving = true);
+    try {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final uid = firebaseUser?.uid ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final name = _nameCtrl.text.trim();
+      final profile = UserProfile(
+        id: uid,
+        name: name,
+        email: firebaseUser?.email ?? '',
+        phone: '',
+        dateOfBirth: _dob!,
+        gender: _gender ?? 'Other',
+        bloodGroup: _bloodType ?? 'A+',
+        heightCm: double.tryParse(_heightCtrl.text) ?? 170.0,
+        weightKg: double.tryParse(_weightCtrl.text) ?? 70.0,
+      );
+      // Update Firebase display name
+      if (firebaseUser?.displayName != name) {
+        await firebaseUser?.updateDisplayName(name);
+      }
+      // Save to Riverpod state
+      ref.read(userProvider.notifier).setUser(profile);
+      // Save locally first (instant)
+      final profileJson = profile.toJson();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
+      // Await Firestore save — retries once if the first attempt fails
+      // (Firestore connection may reset briefly after a previous account deletion)
+      try {
+        await FirestoreService.saveProfile(profileJson);
+      } catch (_) {
+        await Future.delayed(const Duration(seconds: 2));
+        try {
+          await FirestoreService.saveProfile(profileJson);
+        } catch (e) {
+          debugPrint('[ProfileSetup] Firestore saveProfile failed after retry: $e');
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _saving = false);
+    Navigator.pushNamed(context, AppRouter.setupPair);
+  }
 
   Future<void> _pickDob() async {
     final picked = await showDatePicker(
@@ -247,25 +297,15 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isValid
-                      ? () {
-                          ref.read(userProvider.notifier).setUser(
-                                UserProfile(
-                                  id: const Uuid().v4(),
-                                  name: _nameCtrl.text.trim(),
-                                  email: '',
-                                  phone: '',
-                                  dateOfBirth: _dob!,
-                                  gender: _gender ?? 'Other',
-                                  bloodGroup: _bloodType ?? 'A+',
-                                  heightCm: double.tryParse(_heightCtrl.text) ?? 170.0,
-                                  weightKg: double.tryParse(_weightCtrl.text) ?? 70.0,
-                                ),
-                              );
-                          Navigator.pushNamed(context, AppRouter.setupPair);
-                        }
-                      : null,
-                  child: const Text('Next'),
+                  onPressed: _isValid ? _submit : null,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Next'),
                 ),
               ),
             ),

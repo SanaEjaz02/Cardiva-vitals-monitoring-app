@@ -19,6 +19,8 @@ Flutter-based cardiac health monitoring app (FYP II). Reads vitals (HR, SpO2, HR
 |---|---|---|
 | Hafiza Sana Awan | Hafiza Sana Awan | UI, AI/chatbot, routing |
 | KhansaBatool | KhansaBatool-54 | Auth, profile, emergency, reports |
+| Ayesha | Ayesha-nad | — |
+| Qasim | Zuberipersonal@gmail.com | — |
 
 ---
 
@@ -149,6 +151,7 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-05-16` **Hafiza Sana Awan**: chore: add CLAUDE.md context file and shared git hook
 - `2026-05-16` **Hafiza Sana Awan**: feat: add professional feedback module with star rating and category chips
 - `2026-05-16` **Hafiza Sana Awan**: feat: add AI Analysis as bottom nav tab
 - `2026-05-16` **Hafiza Sana Awan**: docs: add Cardiva system overview
@@ -161,4 +164,6 @@ flutter analyze              # lint check
 - `2026-05-13` **Hafiza Sana Awan**: fix: extract RenameDialog widget and close drawer before showing dialog to prevent assertion errors
 - `2026-05-13` **KhansaBatool-54**: feat: AI screen as swipe-right panel, fix per-user attendant & contact storage
 - `2026-05-13` **KhansaBatool-54**: feat: add on-device AI analysis, auto-analysis pipeline, PDF export & WhatsApp sharing
+- `2026-05-06` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
+- `2026-05-06` **Hafiza Sana Awan**: feat: integrate Groq AI chatbot with full session history, markdown, and refined UI
 <!-- ACTIVITY:END -->

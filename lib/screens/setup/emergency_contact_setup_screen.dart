@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
@@ -29,21 +33,58 @@ class _EmergencyContactSetupScreenState
     'Family', 'Friend', 'Doctor', 'Other'
   ];
 
+  bool _saving = false;
+
   void _addContact() {
     if (_nameCtrl.text.isEmpty || _phoneCtrl.text.isEmpty) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final rawPhone = _phoneCtrl.text.trim();
+    // Prepend country code if the user typed only the local number
+    final phone = rawPhone.startsWith('+') ? rawPhone : '+92$rawPhone';
     setState(() {
       _contacts.add(EmergencyContact(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: 'demo',
-        name: _nameCtrl.text,
+        userId: uid,
+        name: _nameCtrl.text.trim(),
         relation: _relationship ?? 'Family',
-        phone: _phoneCtrl.text,
+        phone: phone,
       ));
       _nameCtrl.clear();
       _phoneCtrl.clear();
       _emailCtrl.clear();
       _relationship = null;
     });
+  }
+
+  Future<void> _finish() async {
+    setState(() => _saving = true);
+    try {
+      // Auto-add whatever is still typed in the fields
+      if (_nameCtrl.text.isNotEmpty && _phoneCtrl.text.isNotEmpty) {
+        _addContact();
+      }
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+      if (_contacts.isNotEmpty) {
+        final jsonList = _contacts.map((c) => {
+          'id': c.id,
+          'name': c.name,
+          'phone': c.phone,
+          'relationship': c.relation,
+        }).toList();
+        // Save locally first — this is instant
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+            'emergency_contacts_${uid}_v1', jsonEncode(jsonList));
+        // Firestore sync in background — don't await, it's slow on first write
+        FirestoreService.saveEmergencyContacts(jsonList).catchError((_) {});
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRouter.dashboard,
+      (_) => false,
+    );
   }
 
   @override
@@ -150,7 +191,7 @@ class _EmergencyContactSetupScreenState
                             controller: _phoneCtrl,
                             keyboardType: TextInputType.phone,
                             decoration: const InputDecoration(
-                              hintText: 'Phone number',
+                              hintText: 'Phone number (e.g. 3001234567)',
                               prefixText: '+92 ',
                             ),
                           ),
@@ -268,12 +309,15 @@ class _EmergencyContactSetupScreenState
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    AppRouter.dashboard,
-                    (_) => false,
-                  ),
-                  child: const Text('Finish Setup →'),
+                  onPressed: _saving ? null : _finish,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Finish Setup →'),
                 ),
               ),
             ),
@@ -304,7 +348,7 @@ class _ToggleRow extends StatelessWidget {
         Switch.adaptive(
           value: value,
           onChanged: onChanged,
-          activeColor: AppColors.primary,
+          activeTrackColor: AppColors.primary,
         ),
       ],
     );

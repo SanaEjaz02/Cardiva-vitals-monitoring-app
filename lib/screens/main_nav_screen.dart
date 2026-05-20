@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/analysis_provider.dart';
+import '../providers/user_provider.dart';
 import '../theme/app_colors.dart';
 import '../widgets/atoms/bottom_nav_bar.dart';
 import '../widgets/atoms/cardiva_fab.dart';
@@ -12,14 +15,14 @@ import 'emergency/emergency_popup.dart';
 
 // Page layout: 0=Dashboard  1=Vitals  2=AI  3=History  4=Profile
 
-class MainNavScreen extends StatefulWidget {
+class MainNavScreen extends ConsumerStatefulWidget {
   const MainNavScreen({super.key});
 
   @override
-  State<MainNavScreen> createState() => _MainNavScreenState();
+  ConsumerState<MainNavScreen> createState() => _MainNavScreenState();
 }
 
-class _MainNavScreenState extends State<MainNavScreen> {
+class _MainNavScreenState extends ConsumerState<MainNavScreen> {
   late final PageController _pageController;
   int _currentPage = 0;
 
@@ -28,6 +31,13 @@ class _MainNavScreenState extends State<MainNavScreen> {
     super.initState();
     _pageController = PageController(initialPage: 0);
     _pageController.addListener(_onScroll);
+    // Ensure profile and analysis history are loaded for the current user.
+    // This handles the case where the user logged in via the auth screen
+    // (which doesn't call loadFromStore) or switched accounts.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(userProvider.notifier).loadFromStore();
+      await ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser();
+    });
   }
 
   void _onScroll() {

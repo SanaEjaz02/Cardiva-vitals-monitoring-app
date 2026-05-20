@@ -134,6 +134,7 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
   final Ref _ref;
   Timer? _timer;
   bool _analyzing = false;
+  String? _loadedForUid;
 
   DateTime? nextAnalysisAt;
   bool get isAnalyzing => _analyzing;
@@ -142,7 +143,19 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     _init();
   }
 
+  /// Call this when a new user logs in to ensure stale data from the previous
+  /// session is discarded and fresh data is loaded for the current user.
+  Future<void> ensureLoadedForCurrentUser() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == _loadedForUid) return;
+    _loadedForUid = uid;
+    _timer?.cancel();
+    state = [];
+    await _init();
+  }
+
   Future<void> _init() async {
+    _loadedForUid = FirebaseAuth.instance.currentUser?.uid;
     await _loadHistory();
     await _syncBackgroundRecords();
     _schedule();

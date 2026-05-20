@@ -84,8 +84,9 @@ void _onServiceStart(ServiceInstance service) async {
     );
   }
 
-  // Run background analysis every 5 minutes
-  Timer.periodic(const Duration(minutes: 5), (timer) async {
+  // Run background analysis every 30 minutes — frequent enough to catch issues,
+  // gentle enough not to drain the battery overnight.
+  Timer.periodic(const Duration(minutes: 30), (timer) async {
     if (service is AndroidServiceInstance) {
       if (!await service.isForegroundService()) {
         timer.cancel();
