@@ -31,6 +31,11 @@ class ProfileScreen extends ConsumerStatefulWidget {
   static Future<void> openEditSheet(BuildContext context, WidgetRef ref) async {
     final user = FirebaseAuth.instance.currentUser;
     final userProfile = ref.read(userProvider);
+    // Capture the notifier NOW — synchronously, before any await or widget
+    // disposal. The WidgetRef from the side panel becomes invalid once the
+    // panel is popped, so using ref inside an async callback would silently
+    // fail. UserNotifier itself outlives any widget.
+    final notifier = ref.read(userProvider.notifier);
     final prefs = await SharedPreferences.getInstance();
     final photoPath = prefs.getString('profile_photo_path');
     if (!context.mounted) return;
@@ -48,28 +53,31 @@ class ProfileScreen extends ConsumerStatefulWidget {
         currentProfile: userProfile,
         onSave: (name, path, updated) async {
           if (name.isNotEmpty && name != user?.displayName) {
-            await user?.updateDisplayName(name);
+            user?.updateDisplayName(name);
           }
           final p = await SharedPreferences.getInstance();
-          String? uploadedUrl;
           if (path != null) {
             await p.setString('profile_photo_path', path);
-            uploadedUrl =
-                await StorageService.uploadProfilePhoto(File(path));
           } else {
             await p.remove('profile_photo_path');
           }
           if (updated != null) {
-            final withPhoto = uploadedUrl != null
-                ? updated.copyWith(photoUrl: uploadedUrl)
-                : updated;
-            ref.read(userProvider.notifier).updateProfile(withPhoto);
-            FirestoreService.saveProfile(withPhoto.toJson())
-                .catchError((_) {});
-            final uid =
-                FirebaseAuth.instance.currentUser?.uid ?? 'guest';
-            await p.setString(
-                'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+            notifier.updateProfile(updated);
+            FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            await p.setString('user_profile_$uid', jsonEncode(updated.toJson()));
+            if (path != null) {
+              StorageService.uploadProfilePhoto(File(path)).then((uploadedUrl) {
+                if (uploadedUrl != null) {
+                  final withPhoto = updated.copyWith(photoUrl: uploadedUrl);
+                  notifier.updateProfile(withPhoto);
+                  FirestoreService.saveProfile(withPhoto.toJson())
+                      .catchError((_) {});
+                  p.setString(
+                      'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                }
+              });
+            }
           }
         },
       ),
@@ -162,30 +170,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         currentProfile: userProfile,
         onSave: (name, photoPath, updatedProfile) async {
           if (name.isNotEmpty && name != _user?.displayName) {
-            await _user?.updateDisplayName(name);
+            _user?.updateDisplayName(name);
           }
           final prefs = await SharedPreferences.getInstance();
-          String? uploadedUrl;
           if (photoPath != null) {
             await prefs.setString('profile_photo_path', photoPath);
-            // Upload to Firebase Storage for cross-device sync
-            uploadedUrl = await StorageService.uploadProfilePhoto(
-                File(photoPath));
           } else if (_photoPath != null && photoPath == null) {
             await prefs.remove('profile_photo_path');
           }
           if (mounted) setState(() => _photoPath = photoPath);
           if (updatedProfile != null) {
-            final withPhoto = uploadedUrl != null
-                ? updatedProfile.copyWith(photoUrl: uploadedUrl)
-                : updatedProfile;
-            ref.read(userProvider.notifier).updateProfile(withPhoto);
-            FirestoreService.saveProfile(withPhoto.toJson())
+            // Save immediately so UI updates without waiting for upload
+            ref.read(userProvider.notifier).updateProfile(updatedProfile);
+            FirestoreService.saveProfile(updatedProfile.toJson())
                 .catchError((_) {});
-            final uid =
-                FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await prefs.setString(
-                'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
+            // Upload photo to Firebase Storage in background
+            if (photoPath != null) {
+              StorageService.uploadProfilePhoto(File(photoPath))
+                  .then((uploadedUrl) {
+                if (uploadedUrl != null) {
+                  final withPhoto =
+                      updatedProfile.copyWith(photoUrl: uploadedUrl);
+                  ref.read(userProvider.notifier).updateProfile(withPhoto);
+                  FirestoreService.saveProfile(withPhoto.toJson())
+                      .catchError((_) {});
+                  prefs.setString(
+                      'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                }
+              });
+            }
           }
         },
       ),
@@ -984,7 +1000,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 child: ElevatedButton(
                   onPressed: _saving
                       ? null
-                      : () async {
+                      : () {
                           setState(() => _saving = true);
                           final resultPath = _photoRemoved ? null : _photoPath;
                           final nav = Navigator.of(context);
@@ -1008,18 +1024,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             heightCm: heightCm,
                             weightKg: weightKg,
                           );
-                          await widget.onSave(
+                          // Close immediately — onSave runs in background
+                          nav.pop();
+                          widget.onSave(
                               _nameCtrl.text.trim(), resultPath, updated);
-                          if (mounted) nav.pop();
                         },
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Save'),
+                  child: const Text('Save'),
                 ),
               ),
             ],

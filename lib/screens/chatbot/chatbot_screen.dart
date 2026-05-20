@@ -114,7 +114,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           _sessions = list
               .map((e) => _ChatSession.fromJson(e as Map<String, dynamic>))
               .toList();
-          if (_sessions.isNotEmpty) _current = _sessions.first;
+          // Don't auto-open the last session — show welcome screen with history
         });
       } catch (_) {}
     }
@@ -134,9 +134,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
         if (mounted) {
           setState(() {
             _sessions = merged;
-            if (_current == null && _sessions.isNotEmpty) {
-              _current = _sessions.first;
-            }
+            // Keep _current unchanged — don't auto-select from merged results
           });
         }
       }
@@ -313,6 +311,9 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                     pulseController: _pulseCtrl,
                     onSuggestionTap: _sendMessage,
                     suggestions: _kSuggestions,
+                    recentSessions: _sessions.take(5).toList(),
+                    onSessionTap: (s) => setState(() => _current = s),
+                    onNewChatTap: _createSession,
                   )
                 : _buildChatList(),
           ),
@@ -840,11 +841,17 @@ class _WelcomeView extends StatefulWidget {
   final AnimationController pulseController;
   final void Function(String) onSuggestionTap;
   final List<String> suggestions;
+  final List<_ChatSession> recentSessions;
+  final void Function(_ChatSession) onSessionTap;
+  final VoidCallback onNewChatTap;
 
   const _WelcomeView({
     required this.pulseController,
     required this.onSuggestionTap,
     required this.suggestions,
+    required this.recentSessions,
+    required this.onSessionTap,
+    required this.onNewChatTap,
   });
 
   @override
@@ -1107,6 +1114,59 @@ class _WelcomeViewState extends State<_WelcomeView> {
               onTap: () => widget.onSuggestionTap(s),
             ),
           ),
+
+          // ── Recent conversations ──────────────────────────────────
+          if (widget.recentSessions.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recent conversations',
+                    style: AppTextStyles.caption.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: widget.onNewChatTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, AppColors.primaryDeep],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded,
+                            color: Colors.white, size: 14),
+                        SizedBox(width: 4),
+                        Text('New Chat',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...widget.recentSessions.map((s) => _RecentSessionTile(
+                  session: s,
+                  onTap: () => widget.onSessionTap(s),
+                )),
+          ],
+
+          if (widget.recentSessions.isEmpty) ...[
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );
@@ -1182,6 +1242,83 @@ class _SuggestionTile extends StatelessWidget {
             Expanded(child: Text(text, style: AppTextStyles.body)),
             const Icon(Icons.arrow_forward_ios_rounded,
                 size: 13, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Recent session tile ────────────────────────────────────────────────────
+
+class _RecentSessionTile extends StatelessWidget {
+  final _ChatSession session;
+  final VoidCallback onTap;
+  const _RecentSessionTile({required this.session, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = session.messages.isNotEmpty
+        ? session.messages.last.text
+        : 'No messages yet';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.shadowLg,
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.chat_bubble_outline_rounded,
+                  size: 17, color: AppColors.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.name,
+                    style: AppTextStyles.body.copyWith(
+                        fontWeight: FontWeight.w600, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    preview,
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _ChatbotScreenState._formatDate(session.createdAt),
+              style: AppTextStyles.caption
+                  .copyWith(color: AppColors.textSecondary, fontSize: 10),
+            ),
           ],
         ),
       ),

@@ -1,6 +1,9 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/alert_class.dart';
+import '../../models/user_profile.dart';
 import '../../providers/analysis_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -11,6 +14,7 @@ import '../emergency/emergency_popup.dart';
 import '../../widgets/atoms/vital_animations.dart';
 import '../../widgets/profile_quick_sheet.dart';
 import '../../providers/notifications_provider.dart';
+import '../../providers/user_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   final ValueChanged<int>? onSwitchTab;
@@ -258,7 +262,7 @@ class _SectionHeader extends StatelessWidget {
 
 // ── Top bar ────────────────────────────────────────────────────────────────
 
-class _TopBar extends ConsumerWidget {
+class _TopBar extends ConsumerStatefulWidget {
   final String greeting;
   final AnimationController pulseController;
   final VoidCallback? onProfileTap;
@@ -270,11 +274,44 @@ class _TopBar extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TopBar> createState() => _TopBarState();
+}
+
+class _TopBarState extends ConsumerState<_TopBar> {
+  String? _localPhotoPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalPhoto();
+  }
+
+  Future<void> _loadLocalPhoto() async {
+    final prefs = await SharedPreferences.getInstance();
+    final path = prefs.getString('profile_photo_path');
+    final exists = path != null && await File(path).exists();
+    if (mounted) setState(() => _localPhotoPath = exists ? path : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Reload local photo whenever the profile is saved
+    ref.listen<UserProfile?>(userProvider, (_, __) => _loadLocalPhoto());
+
     final unread = ref.watch(notificationsProvider).unreadCount;
-    final user = AuthService.currentUser;
-    final firstName = user?.displayName?.split(' ').first ?? 'Patient';
+    final userProfile = ref.watch(userProvider);
+    final firebaseUser = AuthService.currentUser;
+    final firstName =
+        firebaseUser?.displayName?.split(' ').first ?? 'Patient';
     final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'P';
+    final networkPhoto = userProfile?.photoUrl ?? firebaseUser?.photoURL;
+
+    ImageProvider? photo;
+    if (_localPhotoPath != null) {
+      photo = FileImage(File(_localPhotoPath!));
+    } else if (networkPhoto != null) {
+      photo = NetworkImage(networkPhoto);
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -284,7 +321,7 @@ class _TopBar extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                greeting,
+                widget.greeting,
                 style: AppTextStyles.caption.copyWith(
                   color: Colors.white.withValues(alpha: 0.70),
                   fontSize: 13,
@@ -349,7 +386,7 @@ class _TopBar extends ConsumerWidget {
         const SizedBox(width: 10),
         // Avatar with gradient ring
         GestureDetector(
-          onTap: onProfileTap,
+          onTap: widget.onProfileTap,
           child: Container(
             padding: const EdgeInsets.all(2.5),
             decoration: const BoxDecoration(
@@ -361,10 +398,13 @@ class _TopBar extends ConsumerWidget {
             child: CircleAvatar(
               radius: 19,
               backgroundColor: AppColors.primaryDeep,
-              child: Text(
-                initial,
-                style: AppTextStyles.h2White().copyWith(fontSize: 15),
-              ),
+              backgroundImage: photo,
+              child: photo == null
+                  ? Text(
+                      initial,
+                      style: AppTextStyles.h2White().copyWith(fontSize: 15),
+                    )
+                  : null,
             ),
           ),
         ),
