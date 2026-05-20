@@ -1,5 +1,6 @@
 ﻿import 'dart:convert';
 import 'dart:io';
+import '../../services/storage_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,6 +26,55 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+
+  /// Opens the edit-profile sheet from anywhere (e.g. the side panel).
+  static Future<void> openEditSheet(BuildContext context, WidgetRef ref) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final userProfile = ref.read(userProvider);
+    final prefs = await SharedPreferences.getInstance();
+    final photoPath = prefs.getString('profile_photo_path');
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.bgWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditProfileSheet(
+        currentName: user?.displayName ?? 'Patient',
+        currentPhotoPath: photoPath,
+        currentProfile: userProfile,
+        onSave: (name, path, updated) async {
+          if (name.isNotEmpty && name != user?.displayName) {
+            await user?.updateDisplayName(name);
+          }
+          final p = await SharedPreferences.getInstance();
+          String? uploadedUrl;
+          if (path != null) {
+            await p.setString('profile_photo_path', path);
+            uploadedUrl =
+                await StorageService.uploadProfilePhoto(File(path));
+          } else {
+            await p.remove('profile_photo_path');
+          }
+          if (updated != null) {
+            final withPhoto = uploadedUrl != null
+                ? updated.copyWith(photoUrl: uploadedUrl)
+                : updated;
+            ref.read(userProvider.notifier).updateProfile(withPhoto);
+            FirestoreService.saveProfile(withPhoto.toJson())
+                .catchError((_) {});
+            final uid =
+                FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            await p.setString(
+                'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+          }
+        },
+      ),
+    );
+  }
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
@@ -115,21 +165,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             await _user?.updateDisplayName(name);
           }
           final prefs = await SharedPreferences.getInstance();
+          String? uploadedUrl;
           if (photoPath != null) {
             await prefs.setString('profile_photo_path', photoPath);
+            // Upload to Firebase Storage for cross-device sync
+            uploadedUrl = await StorageService.uploadProfilePhoto(
+                File(photoPath));
           } else if (_photoPath != null && photoPath == null) {
             await prefs.remove('profile_photo_path');
           }
           if (mounted) setState(() => _photoPath = photoPath);
-
-          // Persist updated profile to Riverpod and Firestore
           if (updatedProfile != null) {
-            ref.read(userProvider.notifier).updateProfile(updatedProfile);
-            FirestoreService.saveProfile(updatedProfile.toJson()).catchError((_) {});
-            // Save to SharedPreferences for offline access
-            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+            final withPhoto = uploadedUrl != null
+                ? updatedProfile.copyWith(photoUrl: uploadedUrl)
+                : updatedProfile;
+            ref.read(userProvider.notifier).updateProfile(withPhoto);
+            FirestoreService.saveProfile(withPhoto.toJson())
+                .catchError((_) {});
+            final uid =
+                FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await prefs.setString(
-                'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
+                'user_profile_$uid', jsonEncode(withPhoto.toJson()));
           }
         },
       ),
@@ -327,6 +383,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userProfile = ref.watch(userProvider);
+    // Network photo: uploaded URL > Google sign-in photo
+    final networkPhoto =
+        userProfile?.photoUrl ?? _user?.photoURL;
+
     return Scaffold(
       backgroundColor: AppColors.bgLight,
       body: SafeArea(
@@ -349,8 +410,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             backgroundColor: AppColors.primaryDeep,
                             backgroundImage: _photoPath != null
                                 ? FileImage(File(_photoPath!))
-                                : null,
-                            child: _photoPath == null
+                                    as ImageProvider
+                                : networkPhoto != null
+                                    ? NetworkImage(networkPhoto)
+                                    : null,
+                            child: _photoPath == null && networkPhoto == null
                                 ? Text(
                                     _initial,
                                     style: AppTextStyles.h1White()

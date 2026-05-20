@@ -9,6 +9,8 @@ import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import '../emergency/emergency_popup.dart';
 import '../../widgets/atoms/vital_animations.dart';
+import '../../widgets/profile_quick_sheet.dart';
+import '../../providers/notifications_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   final ValueChanged<int>? onSwitchTab;
@@ -90,7 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       _TopBar(
                         greeting: _greeting,
                         pulseController: _pulseController,
-                        onProfileTap: () => widget.onSwitchTab?.call(4),
+                        onProfileTap: () => ProfileQuickSheet.show(context, onSwitchTab: widget.onSwitchTab),
                       ),
                       const SizedBox(height: 22),
                       const _HeroCard(),
@@ -256,7 +258,7 @@ class _SectionHeader extends StatelessWidget {
 
 // ── Top bar ────────────────────────────────────────────────────────────────
 
-class _TopBar extends StatelessWidget {
+class _TopBar extends ConsumerWidget {
   final String greeting;
   final AnimationController pulseController;
   final VoidCallback? onProfileTap;
@@ -268,7 +270,8 @@ class _TopBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(notificationsProvider).unreadCount;
     final user = AuthService.currentUser;
     final firstName = user?.displayName?.split(' ').first ?? 'Patient';
     final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'P';
@@ -321,25 +324,26 @@ class _TopBar extends StatelessWidget {
                     color: Colors.white, size: 20),
               ),
             ),
-            Positioned(
-              top: 5,
-              right: 5,
-              child: Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: AppColors.danger,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.danger.withValues(alpha: 0.6),
-                      blurRadius: 4,
-                    ),
-                  ],
+            if (unread > 0)
+              Positioned(
+                top: 5,
+                right: 5,
+                child: Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.danger.withValues(alpha: 0.6),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         const SizedBox(width: 10),

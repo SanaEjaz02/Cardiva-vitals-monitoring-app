@@ -8,6 +8,7 @@ class UserProfile {
   final String bloodGroup;
   final double heightCm;  // centimetres
   final double weightKg;  // kilograms
+  final String? photoUrl; // Firebase Storage download URL
 
   const UserProfile({
     required this.id,
@@ -19,6 +20,7 @@ class UserProfile {
     required this.bloodGroup,
     this.heightCm = 170.0,
     this.weightKg = 70.0,
+    this.photoUrl,
   });
 
   // Computed
@@ -44,6 +46,7 @@ class UserProfile {
         bloodGroup: json['blood_group'] as String? ?? '',
         heightCm: (json['height_cm'] as num?)?.toDouble() ?? 170.0,
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 70.0,
+        photoUrl: json['photo_url'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +59,7 @@ class UserProfile {
         'blood_group': bloodGroup,
         'height_cm': heightCm,
         'weight_kg': weightKg,
+        if (photoUrl != null) 'photo_url': photoUrl,
       };
 
   UserProfile copyWith({
@@ -66,6 +70,8 @@ class UserProfile {
     String? bloodGroup,
     double? heightCm,
     double? weightKg,
+    String? photoUrl,
+    bool clearPhotoUrl = false,
   }) =>
       UserProfile(
         id: id,
@@ -77,5 +83,6 @@ class UserProfile {
         bloodGroup: bloodGroup ?? this.bloodGroup,
         heightCm: heightCm ?? this.heightCm,
         weightKg: weightKg ?? this.weightKg,
+        photoUrl: clearPhotoUrl ? null : (photoUrl ?? this.photoUrl),
       );
 }
