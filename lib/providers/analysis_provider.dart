@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alert_class.dart';
 import '../models/analysis_record.dart';
+import '../models/health_report.dart';
+import '../providers/settings_provider.dart' show kReportHourKey, kReportMinuteKey, kLastReportDayKey;
 import '../models/ml_prediction.dart';
 import '../services/firestore_service.dart';
 import '../services/ml_service.dart';
@@ -133,6 +135,7 @@ class DailySummary {
 class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
   final Ref _ref;
   Timer? _timer;
+  Timer? _reportTimer;
   bool _analyzing = false;
   String? _loadedForUid;
 
@@ -150,6 +153,7 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     if (uid == _loadedForUid) return;
     _loadedForUid = uid;
     _timer?.cancel();
+    _reportTimer?.cancel();
     state = [];
     await _init();
   }
@@ -159,6 +163,7 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     await _loadHistory();
     await _syncBackgroundRecords();
     _schedule();
+    _startReportWatcher();
   }
 
   // Imports records written by the background service isolate
@@ -255,6 +260,16 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     });
   }
 
+  // Checks every minute whether the daily report time has arrived,
+  // independent of the auto-analysis interval.
+  void _startReportWatcher() {
+    _reportTimer?.cancel();
+    _reportTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      _checkAndSaveDailyReport();
+    });
+  }
+
   Future<void> _autoAnalyze() async {
     if (_analyzing) return;
     _analyzing = true;
@@ -299,9 +314,98 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
           prediction.analysisMessage,
         ).catchError((_) {});
       }
+
+      await _checkAndSaveDailyReport();
     } finally {
       _analyzing = false;
     }
+  }
+
+  // Generates a daily report when 24 hours have elapsed since the last one.
+  // Saves locally, syncs to Firestore, and fires a notification.
+  Future<void> _checkAndSaveDailyReport() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+
+      // Read the user's chosen report time (default 22:00)
+      final hour = prefs.getInt(kReportHourKey) ?? 22;
+      final minute = prefs.getInt(kReportMinuteKey) ?? 0;
+      final scheduledToday =
+          DateTime(now.year, now.month, now.day, hour, minute);
+
+      // Not yet time today
+      if (now.isBefore(scheduledToday)) return;
+
+      // Already generated today's report
+      final dayKey = HealthReport.todayKey();
+      if (prefs.getString(kLastReportDayKey) == dayKey) return;
+
+      // Aggregate today's records already in state
+      final todayRecords = state
+          .where((r) =>
+              r.timestamp.year == now.year &&
+              r.timestamp.month == now.month &&
+              r.timestamp.day == now.day)
+          .toList();
+
+      final report = HealthReport(
+        id: 'report_${now.millisecondsSinceEpoch}',
+        name: HealthReport.defaultName(now),
+        dayKey: dayKey,
+        createdAt: now,
+      );
+
+      // Persist to local reports list
+      final reportsKey = 'health_reports_${uid}_v1';
+      final raw = prefs.getString(reportsKey) ?? '[]';
+      final list = jsonDecode(raw) as List;
+      list.removeWhere(
+          (j) => (j as Map<String, dynamic>)['dayKey'] == dayKey);
+      list.insert(0, report.toJson());
+      await prefs.setString(reportsKey, jsonEncode(list));
+
+      // Sync to Firestore (we're in the main isolate so Firebase is available)
+      FirestoreService.syncHealthReports([report]).catchError((_) {});
+
+      // Notify user
+      final summary = todayRecords.isEmpty
+          ? null
+          : buildSummaryFromRecords(todayRecords);
+      final body = summary != null
+          ? summary.summaryText
+          : 'Your daily health report has been generated. Open the app to view it.';
+      NotificationService.showReportNotification(
+        '📊 Daily Health Report Ready',
+        body,
+      ).catchError((_) {});
+
+      // Mark today as done so this doesn't re-fire until tomorrow
+      await prefs.setString(kLastReportDayKey, dayKey);
+    } catch (_) {}
+  }
+
+  // Syncs any reports the background isolate queued for Firestore.
+  // Called from app.dart when the app comes to the foreground.
+  Future<void> syncPendingReports() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'pending_report_sync_$uid';
+      final raw = prefs.getString(key);
+      if (raw == null) return;
+      final list = jsonDecode(raw) as List;
+      if (list.isEmpty) return;
+      final reports = list
+          .map((j) => HealthReport.fromJson(j as Map<String, dynamic>))
+          .toList();
+      await FirestoreService.syncHealthReports(reports);
+      await prefs.remove(key);
+    } catch (_) {}
   }
 
   Future<MlPrediction> analyzeNow({
@@ -377,8 +481,10 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
   }
 
   @override
+  @override
   void dispose() {
     _timer?.cancel();
+    _reportTimer?.cancel();
     super.dispose();
   }
 }

@@ -109,30 +109,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     super.dispose();
   }
 
-  // ── Presets ───────────────────────────────────────────────────────────────
-  void _applyPreset(String preset) {
-    setState(() {
-      switch (preset) {
-        case 'normal':
-          _hr = 72; _spo2 = 98; _hrv = 58; _rr = 16;
-          _ax = 0.1; _ay = 9.8; _az = 0.2;
-          _activity = ActivityType.resting;
-        case 'fall':
-          _hr = 92; _spo2 = 96; _hrv = 42; _rr = 18;
-          _ax = 28.0; _ay = 5.0; _az = 3.0;
-          _activity = ActivityType.walking;
-        case 'low_spo2':
-          _hr = 112; _spo2 = 86; _hrv = 18; _rr = 28;
-          _ax = 0.1; _ay = 9.8; _az = 0.2;
-          _activity = ActivityType.resting;
-        case 'tachycardia':
-          _hr = 158; _spo2 = 93; _hrv = 15; _rr = 24;
-          _ax = 0.1; _ay = 9.8; _az = 0.2;
-          _activity = ActivityType.resting;
-      }
-    });
-  }
-
   // ── Manual analysis → navigates to result screen ──────────────────────────
   Future<void> _runAnalysis() async {
     setState(() => _loading = true);
@@ -337,8 +313,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
                 _buildVitalsCard(),
                 const SizedBox(height: 12),
                 _buildAccelCard(),
-                const SizedBox(height: 12),
-                _buildPresetRow(),
                 const SizedBox(height: 8),
               ],
             ),
@@ -898,45 +872,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     );
   }
 
-  // ── Preset chips ──────────────────────────────────────────────────────────
-  Widget _buildPresetRow() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text('Quick Test Scenarios', style: AppTextStyles.caption),
-        ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _PresetChip(
-                label: 'Normal',
-                icon: Icons.check_circle_outline_rounded,
-                color: AppColors.success,
-                onTap: () => _applyPreset('normal')),
-            _PresetChip(
-                label: 'Fall Sim',
-                icon: Icons.personal_injury_rounded,
-                color: AppColors.warning,
-                onTap: () => _applyPreset('fall')),
-            _PresetChip(
-                label: 'Low SpO₂',
-                icon: Icons.air_rounded,
-                color: AppColors.danger,
-                onTap: () => _applyPreset('low_spo2')),
-            _PresetChip(
-                label: 'Tachycardia',
-                icon: Icons.favorite_rounded,
-                color: AppColors.danger,
-                onTap: () => _applyPreset('tachycardia')),
-          ],
-        ),
-      ],
-    );
-  }
-
   // ── Bottom bar ────────────────────────────────────────────────────────────
   Widget _buildBottomBar() {
     return Container(
@@ -1133,43 +1068,3 @@ class _SliderRow extends StatelessWidget {
   }
 }
 
-// ── Preset chip ────────────────────────────────────────────────────────────
-
-class _PresetChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _PresetChip({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.35)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: color),
-            const SizedBox(width: 5),
-            Text(label,
-                style: AppTextStyles.caption
-                    .copyWith(color: color, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-}

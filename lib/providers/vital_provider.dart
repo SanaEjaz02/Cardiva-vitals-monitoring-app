@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../engine/emergency_trigger.dart';
 import '../engine/health_status_engine.dart';
+import '../models/alert_class.dart';
 import '../models/health_event.dart';
 import '../models/vital_reading.dart';
 import '../services/cloud_service.dart';
@@ -37,7 +38,10 @@ final healthEventProvider = Provider<AsyncValue<HealthEvent>>((ref) {
     cloud.saveVitalReading(reading, userId).catchError((_) {});
     cloud.saveHealthEvent(event, userId).catchError((_) {});
 
-    if (event.isEmergency) {
+    // Class 1 (emergency) and Class 2 (fall alert) both require immediate
+    // contact notification — vitalsAlert (Class 3) is handled separately
+    // via the result screen where the user confirms before sending.
+    if (event.alertClass.requiresAction) {
       EmergencyTrigger.handle(
         event: event,
         userName: user?.name ?? 'Patient',

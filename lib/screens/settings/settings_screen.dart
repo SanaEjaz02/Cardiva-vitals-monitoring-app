@@ -40,10 +40,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _units = 0; // 0=Metric, 1=Imperial
   bool _haptics = true;
 
+  Future<void> _pickReportTime() async {
+    final settings = ref.read(settingsProvider);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: settings.reportTime,
+      helpText: 'Select daily report time',
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked != null && mounted) {
+      ref
+          .read(settingsProvider.notifier)
+          .setDailyReportTime(picked.hour, picked.minute);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final themeIdx =
-        _themeModeToIndex(ref.watch(settingsProvider).themeMode);
+    final settings = ref.watch(settingsProvider);
+    final themeIdx = _themeModeToIndex(settings.themeMode);
+    final reportTimeLabel = settings.reportTimeLabel;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -223,6 +242,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 label: 'Haptics',
                 value: _haptics,
                 onChanged: (v) => setState(() => _haptics = v),
+              ),
+              const Divider(height: 1, color: AppColors.divider),
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.schedule_rounded,
+                      color: AppColors.primary, size: 18),
+                ),
+                title: Text('Daily Report Time', style: AppTextStyles.body),
+                subtitle: Text(
+                  'Report generated & notification sent at this time',
+                  style: AppTextStyles.caption,
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    reportTimeLabel,
+                    style: AppTextStyles.body.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                onTap: _pickReportTime,
               ),
             ]),
             const SizedBox(height: 16),
