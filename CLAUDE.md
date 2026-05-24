@@ -151,19 +151,19 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-05-20` **Hafiza Sana Awan**: Command Line Setup
+- `2026-05-20` **Hafiza Sana Awan**: Command line setup
+- `2026-05-20` **KhansaBatool-54**: Bck navigation , AI chatbot and profil setup
+- `2026-05-20` **KhansaBatool-54**: Notication and Profile setting along with profile picture setup and data synchronization from firestore
+- `2026-05-20` **KhansaBatool-54**: fix: load all user data on login and auto-generate daily reports
+- `2026-05-18` **KhansaBatool-54**: fix: reduce battery drain and make notifications dismissable
+- `2026-05-18` **KhansaBatool-54**: fix: reliable Firestore sync after account deletion and re-registration
+- `2026-05-18` **KhansaBatool-54**: FULL DELETE PROFILE SETUP
+- `2026-05-18` **KhansaBatool-54**: Merge remote: resolve firestore_service conflict, keep deleteAccount + saveFeedback
+- `2026-05-18` **KhansaBatool-54**: Delete Profile Setup
 - `2026-05-16` **Hafiza Sana Awan**: chore: add CLAUDE.md context file and shared git hook
+- `2026-05-16` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
 - `2026-05-16` **Hafiza Sana Awan**: feat: add professional feedback module with star rating and category chips
+- `2026-05-16` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
 - `2026-05-16` **Hafiza Sana Awan**: feat: add AI Analysis as bottom nav tab
-- `2026-05-16` **Hafiza Sana Awan**: docs: add Cardiva system overview
-- `2026-05-15` **KhansaBatool-54**: Google Sign in and Emergency Contacts setup
-- `2026-05-14` **KhansaBatool-54**: Profile Setting history maintanance and add incident reporting module
-- `2026-05-13` **KhansaBatool-54**: feat: WPS-style report manager, persistent history, real GPS & background monitoring
-- `2026-05-13` **KhansaBatool-54**: AI vitals screen and emergency alerts to contacts setup
-- `2026-05-13` **KhansaBatool-54**: feat: AI swipe hint in Vitals, real contacts for alerts, live profile counts
-- `2026-05-13` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
-- `2026-05-13` **Hafiza Sana Awan**: fix: extract RenameDialog widget and close drawer before showing dialog to prevent assertion errors
-- `2026-05-13` **KhansaBatool-54**: feat: AI screen as swipe-right panel, fix per-user attendant & contact storage
-- `2026-05-13` **KhansaBatool-54**: feat: add on-device AI analysis, auto-analysis pipeline, PDF export & WhatsApp sharing
-- `2026-05-06` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
-- `2026-05-06` **Hafiza Sana Awan**: feat: integrate Groq AI chatbot with full session history, markdown, and refined UI
 <!-- ACTIVITY:END -->
