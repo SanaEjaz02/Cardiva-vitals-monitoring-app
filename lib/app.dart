@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/app_navigator.dart';
 import 'providers/analysis_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/user_provider.dart';
@@ -68,6 +69,7 @@ class _CardivAppState extends ConsumerState<CardivApp>
     return MaterialApp(
       title: 'Cardiva',
       debugShowCheckedModeBanner: false,
+      navigatorKey: appNavigatorKey,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,

@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/app_navigator.dart';
 import '../models/notification_model.dart';
+import '../router/app_router.dart';
 
 class NotificationService {
   NotificationService._();
@@ -19,6 +21,10 @@ class NotificationService {
   static const _chWarning   = 'cardiva_warning';
   static const _chReports   = 'cardiva_reports';
 
+  // Payloads — used to deep-link on notification tap
+  static const _payloadVitalsAi = 'vitals_ai';
+  static const _payloadReport   = 'report';
+
   /// Foreground callback — set by NotificationsNotifier to receive in-app notifs.
   static void Function(AppNotification)? onNewNotification;
 
@@ -29,7 +35,10 @@ class NotificationService {
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: androidSettings);
 
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: _onNotificationTap,
+    );
 
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
@@ -70,6 +79,40 @@ class NotificationService {
     );
 
     await android?.requestNotificationsPermission();
+
+    // Handle tap when app was completely closed and user taps notification
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      final payload = launchDetails?.notificationResponse?.payload;
+      if (payload != null) {
+        // Delay so the widget tree is ready before we push a new route.
+        Future.delayed(const Duration(milliseconds: 1800), () {
+          _navigateFromPayload(payload);
+        });
+      }
+    }
+  }
+
+  // ── Notification tap handler ──────────────────────────────────────────────
+
+  static void _onNotificationTap(NotificationResponse response) {
+    final payload = response.payload;
+    if (payload == null) return;
+    // Small delay so the app is foregrounded before we navigate.
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _navigateFromPayload(payload);
+    });
+  }
+
+  static void _navigateFromPayload(String payload) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) return;
+    switch (payload) {
+      case _payloadVitalsAi:
+        navigator.pushNamed(AppRouter.vitalsAi);
+      case _payloadReport:
+        navigator.pushNamed(AppRouter.weeklyReport);
+    }
   }
 
   // ── Daily report notification ─────────────────────────────────────────────
@@ -88,7 +131,8 @@ class NotificationService {
         autoCancel: true,
       ),
     );
-    await _plugin.show(_idReport, title, body, details);
+    await _plugin.show(_idReport, title, body, details,
+        payload: _payloadReport);
     _pushInApp(title, body, NotifType.health);
   }
 
@@ -113,7 +157,8 @@ class NotificationService {
         color: Color(0xFFEF4444),
       ),
     );
-    await _plugin.show(_idEmergency, title, body, details);
+    await _plugin.show(_idEmergency, title, body, details,
+        payload: _payloadVitalsAi);
     _pushInApp(title, body, NotifType.alert);
   }
 
@@ -134,7 +179,8 @@ class NotificationService {
         color: Color(0xFFF59E0B),
       ),
     );
-    await _plugin.show(_idWarning, title, body, details);
+    await _plugin.show(_idWarning, title, body, details,
+        payload: _payloadVitalsAi);
     _pushInApp(title, body, NotifType.health);
   }
 

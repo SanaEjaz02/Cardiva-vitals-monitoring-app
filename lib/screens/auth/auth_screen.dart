@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../router/app_router.dart';
+import 'forgot_password_screen.dart';
 
 // Returns 0 (empty) to 5 (very strong)
 int _calcStrength(String p) {
@@ -222,13 +223,11 @@ class _AuthScreenState extends State<AuthScreen>
     }
   }
 
-  Future<void> _showForgotDialog() async {
-    final ctrl = TextEditingController(text: _loginEmail.text.trim());
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => _ForgotDialog(emailController: ctrl),
+  void _showForgotDialog() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
     );
-    ctrl.dispose();
   }
 
   @override
@@ -348,99 +347,6 @@ class _AuthScreenState extends State<AuthScreen>
           ),
         ),
       ),
-    );
-  }
-}
-
-// ─── Forgot password dialog ───────────────────────────────────────────────────
-
-class _ForgotDialog extends StatefulWidget {
-  final TextEditingController emailController;
-  const _ForgotDialog({required this.emailController});
-
-  @override
-  State<_ForgotDialog> createState() => _ForgotDialogState();
-}
-
-class _ForgotDialogState extends State<_ForgotDialog> {
-  bool _loading = false;
-  bool _sent = false;
-  String? _error;
-
-  Future<void> _send() async {
-    final email = widget.emailController.text.trim();
-    if (email.isEmpty) {
-      setState(() => _error = 'Please enter your email address.');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      await AuthService.sendPasswordReset(email);
-      if (mounted) setState(() => _sent = true);
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() => _error = AuthService.friendlyError(e));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Reset Password'),
-      content: _sent
-          ? Text(
-              'A reset link has been sent to ${widget.emailController.text.trim()}.\n\nCheck your inbox and follow the link.',
-              style: AppTextStyles.body,
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Enter your email and we'll send a reset link.",
-                  style: AppTextStyles.body,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: widget.emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Email address',
-                    prefixIcon: Icon(Icons.email_outlined, size: 20),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                        color: AppColors.danger, fontSize: 12),
-                  ),
-                ],
-              ],
-            ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(_sent ? 'Done' : 'Cancel'),
-        ),
-        if (!_sent)
-          TextButton(
-            onPressed: _loading ? null : _send,
-            child: _loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Send'),
-          ),
-      ],
     );
   }
 }

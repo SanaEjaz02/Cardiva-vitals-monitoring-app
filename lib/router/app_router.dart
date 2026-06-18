@@ -17,6 +17,9 @@ import '../screens/settings/emergency_contacts_screen.dart';
 import '../screens/settings/notification_preferences_screen.dart';
 import '../screens/settings/help_support_screen.dart';
 import '../screens/report/health_report_screen.dart';
+import '../screens/device/device_connection_screen.dart';
+import '../screens/device/live_monitor_screen.dart';
+import '../screens/auth/forgot_password_screen.dart';
 
 class AppRouter {
   AppRouter._();
@@ -48,6 +51,9 @@ class AppRouter {
   static const String notificationPrefs = '/settings/notification-prefs';
   static const String helpSupport = '/settings/help';
   static const String weeklyReport = '/report/weekly';
+  static const String deviceConnect = '/device/connect';
+  static const String liveMonitor = '/device/live';
+  static const String forgotPassword = '/auth/forgot-password';
 
   // ── Static route map (no path parameters) ─────────────────────────────────
   static Map<String, WidgetBuilder> get routes => {
@@ -73,6 +79,9 @@ class AppRouter {
         notificationPrefs: (_) => const NotificationPreferencesScreen(),
         helpSupport: (_) => const HelpSupportScreen(),
         weeklyReport: (_) => const HealthReportScreen(),
+        deviceConnect: (_) => const DeviceConnectionScreen(),
+        liveMonitor: (_) => const LiveMonitorScreen(),
+        forgotPassword: (_) => const ForgotPasswordScreen(),
       };
 
   // ── Dynamic route generator (handles /vitals/:id) ─────────────────────────
