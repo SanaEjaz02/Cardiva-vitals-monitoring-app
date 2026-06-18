@@ -4,6 +4,7 @@ import '../engine/health_status_engine.dart';
 import '../models/alert_class.dart';
 import '../models/health_event.dart';
 import '../models/vital_reading.dart';
+import '../services/ble_service.dart';
 import '../services/cloud_service.dart';
 import '../services/mock_data_service.dart';
 import 'user_provider.dart';
@@ -19,9 +20,22 @@ final mockDataServiceProvider = Provider<MockDataService>((ref) {
 
 final cloudServiceProvider = Provider<CloudService>((ref) => CloudService());
 
+final bleServiceProvider = Provider<BleService>((ref) {
+  final svc = BleService();
+  ref.onDispose(svc.dispose);
+  return svc;
+});
+
+// true = use BLE stream, false = use mock
+final bleConnectedProvider = StateProvider<bool>((ref) => false);
+
 // ── Live vital stream ────────────────────────────────────────────────────────
-// Switch this one provider to BleService when hardware is ready.
+// Automatically switches between BLE and mock data based on connection state.
 final latestReadingProvider = StreamProvider<VitalReading>((ref) {
+  final useBle = ref.watch(bleConnectedProvider);
+  if (useBle) {
+    return ref.watch(bleServiceProvider).readingStream;
+  }
   return ref.watch(mockDataServiceProvider).stream;
 });
 

@@ -90,6 +90,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _photoPath;
   int _contactCount = 0;
   int _attendantCount = 0;
+  String? _connectedDeviceName;
 
   String get _displayName => _user?.displayName ?? 'Patient';
   String get _email => _user?.email ?? '—';
@@ -146,10 +147,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       } catch (_) {}
     }
 
+    // Connected BLE device name
+    final deviceName = prefs.getString('ble_device_name');
+
     if (mounted) {
       setState(() {
         _contactCount = ecCount;
         _attendantCount = attCount;
+        _connectedDeviceName = deviceName;
       });
     }
   }
@@ -575,10 +580,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   _ProfileRow(
                     icon: Icons.watch_rounded,
-                    label: 'Device Status',
-                    badge: const PillWidget('Disconnected',
-                        variant: PillVariant.outline),
-                    onTap: () {},
+                    label: 'Device Connection',
+                    badge: _connectedDeviceName != null
+                        ? const PillWidget('Connected',
+                            variant: PillVariant.success)
+                        : const PillWidget('Disconnected',
+                            variant: PillVariant.outline),
+                    onTap: () async {
+                      await Navigator.pushNamed(
+                          context, AppRouter.deviceConnect);
+                      if (mounted) _loadData();
+                    },
                   ),
                   _ProfileRow(
                     icon: Icons.download_outlined,

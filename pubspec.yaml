@@ -50,6 +50,7 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   pdf: ^3.11.0
   share_plus: ^10.0.0
+  flutter_blue_plus: ^1.35.5
 
 dev_dependencies:
   flutter_test:
