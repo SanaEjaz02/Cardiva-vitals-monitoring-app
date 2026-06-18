@@ -151,7 +151,9 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-06-18` **Hafiza Sana Awan**: new changes
 - `2026-05-24` **Hafiza Sana Awan**: Resolved merge conflicts
+- `2026-05-21` **KhansaBatool-54**: Vitals screen And Report Timer Setting
 - `2026-05-20` **Hafiza Sana Awan**: Command Line Setup
 - `2026-05-20` **Hafiza Sana Awan**: Command line setup
 - `2026-05-20` **KhansaBatool-54**: Bck navigation , AI chatbot and profil setup
@@ -163,7 +165,5 @@ flutter analyze              # lint check
 - `2026-05-18` **KhansaBatool-54**: Merge remote: resolve firestore_service conflict, keep deleteAccount + saveFeedback
 - `2026-05-18` **KhansaBatool-54**: Delete Profile Setup
 - `2026-05-16` **Hafiza Sana Awan**: chore: add CLAUDE.md context file and shared git hook
-- `2026-05-16` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
-- `2026-05-16` **Hafiza Sana Awan**: feat: add professional feedback module with star rating and category chips
 - `2026-05-16` **Hafiza Sana Awan**: Merge feature-new-screens-and-ndk-fix into main
 <!-- ACTIVITY:END -->
