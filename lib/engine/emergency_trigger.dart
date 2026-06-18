@@ -11,6 +11,11 @@ import '../services/sms_service.dart';
 class EmergencyTrigger {
   EmergencyTrigger._();
 
+  // Prevents SMS/WhatsApp flood when vitals stay in emergency state across
+  // multiple consecutive readings. Notification always fires (idempotent — fixed ID).
+  static DateTime? _lastSmsSentAt;
+  static const _smsCooldown = Duration(minutes: 5);
+
   /// Loads all registered emergency contacts and SMS-enabled attendants
   /// from SharedPreferences, scoped to the current Firebase user.
   static Future<List<String>> _loadContactPhones() async {
@@ -50,7 +55,8 @@ class EmergencyTrigger {
     required String userPhone,
     required String userId,
   }) async {
-    if (!event.isEmergency) return;
+    // Normal readings never trigger alerts.
+    if (event.alertClass == AlertClass.normal) return;
 
     // Step 1: Get GPS location (best-effort — don't block if it fails)
     String mapsLink = 'Location unavailable';
@@ -62,10 +68,15 @@ class EmergencyTrigger {
       mapsLink = 'https://maps.google.com/?q=$lat,$lng';
     } catch (_) {}
 
-    // Step 2: Build SMS message
+    // Step 2: Build SMS message — label and alert type vary by class
     final r = event.reading;
-    final alertType = r.fallDetected ? 'FALL DETECTED' : 'CRITICAL VITALS';
-    final message = '''⚠️ CARDIVA $alertType ALERT ⚠️
+    final alertType = switch (event.alertClass) {
+      AlertClass.emergency => 'EMERGENCY',
+      AlertClass.fallAlert => 'FALL DETECTED',
+      AlertClass.vitalsAlert => 'CRITICAL VITALS',
+      _ => 'ALERT',
+    };
+    final message = '''⚠️ CARDIVA $alertType ⚠️
 Patient: $userName
 Status: ${event.alertClass.label}
 Fall Detected: ${r.fallDetected ? 'YES' : 'No'}
@@ -79,9 +90,14 @@ Vitals at time of alert:
 
 📍 $mapsLink''';
 
-    // Step 3: Send SMS to all contacts at once, then open WhatsApp sequentially
+    // Step 3: Send SMS/WhatsApp — rate-limited to once per 5 minutes so a
+    // sustained alert reading doesn't flood contacts with messages.
     final phones = await _loadContactPhones();
-    if (phones.isNotEmpty) {
+    final now = DateTime.now();
+    final canSendSms = _lastSmsSentAt == null ||
+        now.difference(_lastSmsSentAt!) >= _smsCooldown;
+    if (phones.isNotEmpty && canSendSms) {
+      _lastSmsSentAt = now;
       SmsService.sendSmsToAll(phones: phones, message: message).catchError((_) {});
       for (int i = 0; i < phones.length; i++) {
         Future.delayed(Duration(milliseconds: i * 800), () {
@@ -90,19 +106,29 @@ Vitals at time of alert:
       }
     }
 
-    // Step 4: Log alert to cloud (non-blocking)
-    CloudService().saveAlert(
-      userId,
-      message,
-      r.fallDetected ? 'fall_detection' : 'critical_vitals',
-      lat,
-      lng,
-    ).catchError((_) {});
+    // Step 4: Log alert to cloud (non-blocking, same cooldown as SMS)
+    if (canSendSms) {
+      CloudService().saveAlert(
+        userId,
+        message,
+        r.fallDetected ? 'fall_detection' : 'critical_vitals',
+        lat,
+        lng,
+      ).catchError((_) {});
+    }
 
-    // Step 5: Show in-app high-priority notification
-    NotificationService.showEmergencyNotification(
-      '🚨 CARDIVA Emergency',
-      event.statusMessage,
-    ).catchError((_) {});
+    // Step 5: Show notification — emergency/fall get max-priority full-screen,
+    // vitals alert gets high-priority warning notification.
+    if (event.alertClass == AlertClass.vitalsAlert) {
+      NotificationService.showWarningNotification(
+        '⚠️ CARDIVA ${event.alertClass.label}',
+        event.statusMessage,
+      ).catchError((_) {});
+    } else {
+      NotificationService.showEmergencyNotification(
+        '🚨 CARDIVA ${event.alertClass.label}',
+        event.statusMessage,
+      ).catchError((_) {});
+    }
   }
 }

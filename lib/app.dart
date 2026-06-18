@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers/analysis_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/user_provider.dart';
+import 'providers/vital_provider.dart';
 import 'router/app_router.dart';
 import 'services/background_service.dart';
 import 'theme/app_theme.dart';
@@ -36,14 +37,18 @@ class _CardivAppState extends ConsumerState<CardivApp>
       ref.read(analysisHistoryProvider.notifier).syncFromBackground();
       // Refresh user profile for background service
       _writeUserProfileForBackground();
+      // Push any reports the background isolate queued to Firestore
+      ref.read(analysisHistoryProvider.notifier).syncPendingReports();
     }
   }
 
-  // Writes user profile to SharedPreferences so the background isolate can read it
+  // Writes user profile + UID to SharedPreferences so the background isolate
+  // can scope its storage to the correct user.
   Future<void> _writeUserProfileForBackground() async {
     final user = ref.read(userProvider);
     if (user == null) return;
     await BackgroundService.writeUserProfile(
+      uid: user.id,
       heightM: user.heightM,
       weightKg: user.weightKg,
       age: user.age,
@@ -53,6 +58,11 @@ class _CardivAppState extends ConsumerState<CardivApp>
 
   @override
   Widget build(BuildContext context) {
+    // Keep healthEventProvider alive on every screen so emergency detection
+    // and EmergencyTrigger fire immediately from live readings, not just when
+    // the AI screen is open.
+    ref.listen(healthEventProvider, (_, __) {});
+
     final themeMode = ref.watch(settingsProvider).themeMode;
 
     return MaterialApp(

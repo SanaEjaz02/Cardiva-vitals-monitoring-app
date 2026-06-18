@@ -12,10 +12,12 @@ class NotificationService {
   // Notification IDs
   static const _idEmergency = 1;
   static const _idWarning   = 2;
+  static const _idReport    = 3;
 
   // Channel IDs
   static const _chEmergency = 'cardiva_emergency';
   static const _chWarning   = 'cardiva_warning';
+  static const _chReports   = 'cardiva_reports';
 
   /// Foreground callback — set by NotificationsNotifier to receive in-app notifs.
   static void Function(AppNotification)? onNewNotification;
@@ -56,7 +58,38 @@ class NotificationService {
       ),
     );
 
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _chReports,
+        'Daily Reports',
+        description: 'Automatic 24-hour health report summary.',
+        importance: Importance.defaultImportance,
+        playSound: false,
+        enableVibration: false,
+      ),
+    );
+
     await android?.requestNotificationsPermission();
+  }
+
+  // ── Daily report notification ─────────────────────────────────────────────
+
+  static Future<void> showReportNotification(
+    String title,
+    String body,
+  ) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _chReports,
+        'Daily Reports',
+        channelDescription: 'Automatic 24-hour health report summary.',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        autoCancel: true,
+      ),
+    );
+    await _plugin.show(_idReport, title, body, details);
+    _pushInApp(title, body, NotifType.health);
   }
 
   // ── Emergency notification ────────────────────────────────────────────────
