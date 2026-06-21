@@ -75,6 +75,7 @@ class AuthService {
         return 'No account found with this email.';
       case 'wrong-password':
       case 'invalid-credential':
+      case 'INVALID_LOGIN_CREDENTIALS':
         return 'Incorrect email or password.';
       case 'email-already-in-use':
         return 'An account already exists with this email.';
@@ -90,8 +91,12 @@ class AuthService {
         return 'This account has been disabled.';
       case 'operation-not-allowed':
         return 'This sign-in method is not enabled.';
+      case 'app-check-token-check-failed':
+      case 'missing-app-token':
+        return 'Security verification failed. Please restart the app and try again.';
       default:
-        return 'Something went wrong. Please try again.';
+        // Include the raw code to help debug unexpected errors
+        return 'Something went wrong (${e.code}). Please try again.';
     }
   }
 

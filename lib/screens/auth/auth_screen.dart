@@ -138,7 +138,7 @@ class _AuthScreenState extends State<AuthScreen>
         );
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, AppRouter.dashboard);
-        return; // skip finally setState — widget is gone
+        return;
       } else {
         final cred = await AuthService.signUpWithEmail(
           email: _registerEmail.text.trim(),
@@ -147,7 +147,7 @@ class _AuthScreenState extends State<AuthScreen>
         await cred.user?.updateDisplayName(_registerName.text.trim());
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, AppRouter.setupProfile);
-        return; // skip finally setState — widget is gone
+        return;
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
