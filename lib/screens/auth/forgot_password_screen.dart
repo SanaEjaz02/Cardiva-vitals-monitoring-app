@@ -15,6 +15,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailCtrl = TextEditingController();
   bool _loading = false;
   bool _sent = false;
+  bool _isGoogleAccount = false;
   String? _error;
 
   @override
@@ -38,10 +39,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _error = null;
     });
     try {
+      // Check if this email uses Google Sign-In
+      final methods = await FirebaseAuth.instance
+          .fetchSignInMethodsForEmail(email);
+      final usesGoogle = methods.contains('google.com');
+      final usesPassword = methods.contains('password');
+
+      if (usesGoogle && !usesPassword) {
+        // Google-only account — password reset doesn't apply
+        if (mounted) setState(() { _isGoogleAccount = true; _sent = true; });
+        return;
+      }
+
       await AuthService.sendPasswordReset(email);
       if (mounted) setState(() => _sent = true);
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => _error = AuthService.friendlyError(e));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -72,7 +89,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildForm() {
-    return Column(
+    return SingleChildScrollView(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 32),
@@ -188,10 +206,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 
   Widget _buildSuccess() {
+    if (_isGoogleAccount) return _buildGoogleAccountInfo();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -199,7 +220,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Container(
           width: 88,
           height: 88,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.successBg,
             shape: BoxShape.circle,
           ),
@@ -212,8 +233,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Text(
           'A password reset link has been sent to\n'
           '${_emailCtrl.text.trim()}',
-          style: AppTextStyles.body
-              .copyWith(color: AppColors.textSecondary),
+          style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
@@ -230,8 +250,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('How to reset your password:',
-                  style: AppTextStyles.body
-                      .copyWith(fontWeight: FontWeight.w600)),
+                  style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
               _Step(n: '1', text: 'Open the email from Cardiva'),
               _Step(n: '2', text: 'Tap "Reset Password" in the email'),
@@ -244,21 +263,81 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         TextButton(
           onPressed: () => setState(() {
             _sent = false;
+            _isGoogleAccount = false;
             _emailCtrl.clear();
           }),
-          child: Text(
-            'Resend email',
-            style: AppTextStyles.body.copyWith(color: AppColors.primary),
-          ),
+          child: Text('Resend email',
+              style: AppTextStyles.body.copyWith(color: AppColors.primary)),
         ),
         const SizedBox(height: 8),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Back to Login',
-            style: AppTextStyles.body
-                .copyWith(color: AppColors.textSecondary),
+          child: Text('Back to Login',
+              style: AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGoogleAccountInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const SizedBox(height: 48),
+        Container(
+          width: 88,
+          height: 88,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F0FE),
+            shape: BoxShape.circle,
           ),
+          child: const Center(
+            child: Text('G',
+                style: TextStyle(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4285F4),
+                )),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text('Google Account Detected', style: AppTextStyles.h1,
+            textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        Text(
+          'This email is linked to a Google account.\n'
+          'Cardiva does not manage your Google password.',
+          style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.bgLight,
+            borderRadius: BorderRadius.circular(16),
+            border: const Border(
+              left: BorderSide(color: Color(0xFF4285F4), width: 3),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('To change your Google password:',
+                  style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
+              _Step(n: '1', text: 'Open myaccount.google.com'),
+              _Step(n: '2', text: 'Go to Security → How you sign in'),
+              _Step(n: '3', text: 'Tap Password and follow the steps'),
+              _Step(n: '4', text: 'Come back and sign in with Google as usual'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Back to Login',
+              style: AppTextStyles.body.copyWith(color: AppColors.textSecondary)),
         ),
       ],
     );
