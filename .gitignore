@@ -58,3 +58,6 @@ ios/Runner/GoogleService-Info.plist
 # Environment variables — contains API keys, never commit
 .env
 .env.*
+
+# Thesis local backups (kept off remote to avoid repo bloat)
+Project_Report/backups/
