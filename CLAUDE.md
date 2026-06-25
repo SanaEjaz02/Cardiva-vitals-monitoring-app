@@ -151,7 +151,11 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-06-25` **Hafiza Sana Awan**: docs(thesis): complete Ch5-7, IEEE references, formatting & abbreviations
+- `2026-06-24` **Hafiza Sana Awan**: Merge remote-tracking branch 'origin/main' into feature-new-screens-and-ndk-fix
 - `2026-06-24` **Hafiza Sana Awan**: docs: add thesis document and progress notes
+- `2026-06-24` **KhansaBatool-54**: APP Icon Setup
+- `2026-06-21` **KhansaBatool-54**: Password reset setup
 - `2026-06-18` **Hafiza Sana Awan**:  screen setup
 - `2026-06-18` **Hafiza Sana Awan**: small setup changes
 - `2026-06-18` **KhansaBatool-54**: Bluetooth connection with band and hardware data retreival
@@ -162,8 +166,4 @@ flutter analyze              # lint check
 - `2026-05-20` **Hafiza Sana Awan**: Command line setup
 - `2026-05-20` **KhansaBatool-54**: Bck navigation , AI chatbot and profil setup
 - `2026-05-20` **KhansaBatool-54**: Notication and Profile setting along with profile picture setup and data synchronization from firestore
-- `2026-05-20` **KhansaBatool-54**: fix: load all user data on login and auto-generate daily reports
-- `2026-05-18` **KhansaBatool-54**: fix: reduce battery drain and make notifications dismissable
-- `2026-05-18` **KhansaBatool-54**: fix: reliable Firestore sync after account deletion and re-registration
-- `2026-05-18` **KhansaBatool-54**: FULL DELETE PROFILE SETUP
 <!-- ACTIVITY:END -->
