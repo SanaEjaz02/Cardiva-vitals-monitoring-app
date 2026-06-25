@@ -287,8 +287,9 @@ class _TopBarState extends ConsumerState<_TopBar> {
   }
 
   Future<void> _loadLocalPhoto() async {
+    final uid = AuthService.currentUser?.uid ?? 'guest';
     final prefs = await SharedPreferences.getInstance();
-    final path = prefs.getString('profile_photo_path');
+    final path = prefs.getString('profile_photo_path_$uid');
     final exists = path != null && await File(path).exists();
     if (mounted) setState(() => _localPhotoPath = exists ? path : null);
   }
@@ -829,10 +830,10 @@ class _VitalLayout extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final last = ref.watch(lastAnalysisProvider);
 
-    final hr = last != null ? last.heartRate.toStringAsFixed(0) : '—';
-    final spo2 = last != null ? '${last.spo2.toStringAsFixed(0)}%' : '—';
-    final hrv = last != null ? '${last.hrv.toStringAsFixed(0)}ms' : '—';
-    final rr = last != null ? '${last.respirationRate.toStringAsFixed(0)}/min' : '—';
+    final hr       = last != null ? last.heartRate.toStringAsFixed(0) : '—';
+    final spo2     = last != null ? '${last.spo2.toStringAsFixed(0)}%' : '—';
+    final hrv      = last != null ? '${last.hrv.toStringAsFixed(0)}ms' : '—';
+    final rr       = last != null ? '${last.respirationRate.toStringAsFixed(0)}/min' : '—';
     final activity = last?.prediction.analysisMessage.contains('fall') == true
         ? 'Alert'
         : 'Resting';
@@ -847,6 +848,18 @@ class _VitalLayout extends ConsumerWidget {
     String spo2Status() {
       if (last == null) return 'No data';
       return last.spo2 < 95 ? 'Low' : 'Stable';
+    }
+
+    String hrvStatus() {
+      if (last == null) return 'No data';
+      return last.hrv < 20 ? 'Low' : 'Normal';
+    }
+
+    String rrStatus() {
+      if (last == null) return 'No data';
+      return (last.respirationRate < 12 || last.respirationRate > 20)
+          ? 'Abnormal'
+          : 'Normal';
     }
 
     return Column(
@@ -904,11 +917,7 @@ class _VitalLayout extends ConsumerWidget {
                       child: _MiniVitalCard(
                         name: 'HRV',
                         value: hrv,
-                        status: last == null
-                            ? 'No data'
-                            : last.hrv < 20
-                                ? 'Low'
-                                : 'Normal',
+                        status: hrvStatus(),
                         icon: Icons.show_chart_rounded,
                         accentColor: const Color(0xFF7B5EA7),
                         customAnimation: const HrvAnimWidget(
@@ -924,12 +933,7 @@ class _VitalLayout extends ConsumerWidget {
                       child: _MiniVitalCard(
                         name: 'Respiration',
                         value: rr,
-                        status: last == null
-                            ? 'No data'
-                            : last.respirationRate < 12 ||
-                                    last.respirationRate > 20
-                                ? 'Abnormal'
-                                : 'Normal',
+                        status: rrStatus(),
                         icon: Icons.air_rounded,
                         accentColor: const Color(0xFF00B4D8),
                         customAnimation: const LungsAnimWidget(

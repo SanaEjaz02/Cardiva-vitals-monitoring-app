@@ -8,6 +8,7 @@ import '../../services/firestore_service.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -52,6 +53,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   bool _isTyping = false;
   bool _showScrollBtn = false;
 
+  // Voice input
+  final _speech = SpeechToText();
+  bool _speechAvailable = false;
+  bool _isListening = false;
+
   List<_ChatSession> _sessions = [];
   _ChatSession? _current;
 
@@ -68,6 +74,9 @@ class _ChatbotScreenState extends State<ChatbotScreen>
     )..repeat(reverse: true);
     _groqApiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     _scrollCtrl.addListener(_onScroll);
+    _speech.initialize().then((available) {
+      if (mounted) setState(() => _speechAvailable = available);
+    });
     _loadSessions().then((_) {
       final msg = widget.initialMessage;
       if (msg != null && msg.isNotEmpty) {
@@ -81,11 +90,54 @@ class _ChatbotScreenState extends State<ChatbotScreen>
 
   @override
   void dispose() {
+    _speech.stop();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     _dotsCtrl.dispose();
     _pulseCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleVoice() async {
+    if (!_speechAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Microphone not available on this device.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_isListening) {
+      await _speech.stop();
+      setState(() => _isListening = false);
+      // Send whatever was captured
+      if (_inputCtrl.text.trim().isNotEmpty) _sendMessage();
+      return;
+    }
+
+    setState(() => _isListening = true);
+    await _speech.listen(
+      onResult: (result) {
+        setState(() {
+          _inputCtrl.text = result.recognizedWords;
+          _inputCtrl.selection = TextSelection.fromPosition(
+            TextPosition(offset: _inputCtrl.text.length),
+          );
+        });
+        if (result.finalResult) {
+          _speech.stop();
+          setState(() => _isListening = false);
+          if (_inputCtrl.text.trim().isNotEmpty) _sendMessage();
+        }
+      },
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        localeId: 'en_US',
+      ),
+    );
   }
 
   void _onScroll() {
@@ -767,9 +819,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.mic_none_rounded,
-                  color: AppColors.textSecondary),
-              onPressed: () {},
+              icon: Icon(
+                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: _isListening ? AppColors.danger : AppColors.textSecondary,
+              ),
+              onPressed: _toggleVoice,
             ),
             Expanded(
               child: TextField(

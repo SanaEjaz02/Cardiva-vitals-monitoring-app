@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/vital_provider.dart';
 import '../../router/app_router.dart';
+import '../../services/ble_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -126,8 +127,10 @@ class _DeviceConnectionScreenState
       await prefs.setString('ble_device_id', device.remoteId.toString());
       await prefs.setString('ble_device_name', name);
 
-      // Attach to BleService so readingStream becomes active
+      // Attach to BleService — may throw if characteristic not found
       await ref.read(bleServiceProvider).attachDevice(device);
+
+      // Only mark connected if attachDevice succeeded
       ref.read(bleConnectedProvider.notifier).state = true;
 
       if (mounted) {
@@ -143,11 +146,25 @@ class _DeviceConnectionScreenState
           ),
         );
       }
-    } catch (e) {
+    } on StateError catch (e) {
+      // Characteristic not found — disconnect and inform the user
+      await device.disconnect().catchError((_) {});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Connection failed. Please try again.'),
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (e) {
+      await device.disconnect().catchError((_) {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: $e'),
             backgroundColor: AppColors.danger,
             behavior: SnackBarBehavior.floating,
           ),
@@ -275,10 +292,13 @@ class _DeviceConnectionScreenState
                           _connecting?.remoteId == r.device.remoteId;
                       final isConnected =
                           _connectedDevice?.remoteId == r.device.remoteId;
+                      final isTarget =
+                          r.device.platformName == BleService.targetDeviceName;
                       return _DeviceTile(
                         result: r,
                         isConnecting: isConnecting,
                         isConnected: isConnected,
+                        isTarget: isTarget,
                         onTap: isConnected
                             ? _disconnect
                             : () => _connect(r.device),
@@ -441,12 +461,14 @@ class _DeviceTile extends StatelessWidget {
   final ScanResult result;
   final bool isConnecting;
   final bool isConnected;
+  final bool isTarget;
   final VoidCallback onTap;
 
   const _DeviceTile({
     required this.result,
     required this.isConnecting,
     required this.isConnected,
+    required this.isTarget,
     required this.onTap,
   });
 
@@ -501,9 +523,31 @@ class _DeviceTile extends StatelessWidget {
             size: 20,
           ),
         ),
-        title: Text(_name,
-            style:
-                AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(_name,
+                  style: AppTextStyles.body
+                      .copyWith(fontWeight: FontWeight.w600)),
+            ),
+            if (isTarget) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('Your Device',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ],
+        ),
         subtitle: Row(
           children: [
             _SignalBars(bars: _bars),

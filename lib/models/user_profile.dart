@@ -1,3 +1,5 @@
+enum UserRole { patient, attendant }
+
 class UserProfile {
   final String id;
   final String name;
@@ -6,9 +8,12 @@ class UserProfile {
   final DateTime dateOfBirth;
   final String gender;
   final String bloodGroup;
-  final double heightCm;  // centimetres
-  final double weightKg;  // kilograms
-  final String? photoUrl; // Firebase Storage download URL
+  final double heightCm;
+  final double weightKg;
+  final String? photoUrl;
+  final UserRole role;
+  // For attendants: the patient UID they are monitoring
+  final String? monitoredPatientId;
 
   const UserProfile({
     required this.id,
@@ -21,6 +26,8 @@ class UserProfile {
     this.heightCm = 170.0,
     this.weightKg = 70.0,
     this.photoUrl,
+    this.role = UserRole.patient,
+    this.monitoredPatientId,
   });
 
   // Computed
@@ -47,6 +54,8 @@ class UserProfile {
         heightCm: (json['height_cm'] as num?)?.toDouble() ?? 170.0,
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 70.0,
         photoUrl: json['photo_url'] as String?,
+        role: json['role'] == 'attendant' ? UserRole.attendant : UserRole.patient,
+        monitoredPatientId: json['monitored_patient_id'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +69,9 @@ class UserProfile {
         'height_cm': heightCm,
         'weight_kg': weightKg,
         if (photoUrl != null) 'photo_url': photoUrl,
+        'role': role == UserRole.attendant ? 'attendant' : 'patient',
+        if (monitoredPatientId != null)
+          'monitored_patient_id': monitoredPatientId,
       };
 
   UserProfile copyWith({
@@ -72,6 +84,9 @@ class UserProfile {
     double? weightKg,
     String? photoUrl,
     bool clearPhotoUrl = false,
+    UserRole? role,
+    String? monitoredPatientId,
+    bool clearMonitoredPatientId = false,
   }) =>
       UserProfile(
         id: id,
@@ -84,5 +99,9 @@ class UserProfile {
         heightCm: heightCm ?? this.heightCm,
         weightKg: weightKg ?? this.weightKg,
         photoUrl: clearPhotoUrl ? null : (photoUrl ?? this.photoUrl),
+        role: role ?? this.role,
+        monitoredPatientId: clearMonitoredPatientId
+            ? null
+            : (monitoredPatientId ?? this.monitoredPatientId),
       );
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/notification_model.dart';
@@ -26,8 +27,10 @@ class NotificationsState {
 }
 
 class NotificationsNotifier extends StateNotifier<NotificationsState> {
-  static const _storeKey = 'in_app_notifications_v2';
-  static const _pendingKey = 'pending_notifications';
+  // Keys scoped to the logged-in user so profiles never share notification history
+  static String get _uid => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  static String get _storeKey => 'in_app_notifications_v2_$_uid';
+  static String get _pendingKey => 'pending_notifications_$_uid';
 
   AppNotification? _lastDeleted;
   int _lastDeletedIndex = 0;

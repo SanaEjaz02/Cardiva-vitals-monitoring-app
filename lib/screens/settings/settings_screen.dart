@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/user_profile.dart';
+import '../../providers/settings_provider.dart';
+import '../../providers/user_provider.dart';
+import '../../router/app_router.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../router/app_router.dart';
-import '../../providers/settings_provider.dart';
+import '../attendant/attendant_home_screen.dart';
 import '../emergency/emergency_popup.dart';
 
 // ── Theme mode helpers ─────────────────────────────────────────────────────
@@ -79,6 +84,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
+            // Section 0 — My Account
+            const _SectionHeader('My Account'),
+            _AccountCard(onRoleSwitch: _switchRole),
+            const SizedBox(height: 16),
             // Section 1 — Alerts & Thresholds
             const _SectionHeader('Alerts & Thresholds'),
             _SettingsCard(key: const ValueKey('card-alerts'), children: [
@@ -318,6 +327,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     EmergencyPopup.show(context, 'fall');
   }
 
+  Future<void> _switchRole(UserRole newRole) async {
+    final profile = ref.read(userProvider);
+    if (profile == null) return;
+    final updated = profile.copyWith(role: newRole);
+    ref.read(userProvider.notifier).updateProfile(updated);
+    FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+
+    if (!mounted) return;
+    if (newRole == UserRole.attendant) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AttendantHomeScreen()),
+        (_) => false,
+      );
+    } else {
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRouter.dashboard,
+        (_) => false,
+      );
+    }
+  }
+
   void _confirmDelete(BuildContext context) {
     showDialog(
       context: context,
@@ -336,6 +366,141 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Text('Delete',
                 style:
                     AppTextStyles.body.copyWith(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Account card ───────────────────────────────────────────────────────────
+
+class _AccountCard extends ConsumerWidget {
+  final void Function(UserRole) onRoleSwitch;
+  const _AccountCard({required this.onRoleSwitch});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProvider);
+    final uid = profile?.id ?? '—';
+    final isAttendant = profile?.role == UserRole.attendant;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.shadowLg, blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Patient ID row (only shown for patients)
+          if (!isAttendant) ...[
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryBg,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.badge_rounded,
+                    color: AppColors.primary, size: 18),
+              ),
+              title: Text('My Patient ID', style: AppTextStyles.body),
+              subtitle: Text(
+                uid,
+                style: AppTextStyles.caption.copyWith(
+                  fontFamily: 'monospace',
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy_rounded,
+                    color: AppColors.textSecondary, size: 18),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: uid));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Patient ID copied to clipboard'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.divider),
+          ],
+          // Role switch row
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isAttendant
+                    ? AppColors.successBg
+                    : AppColors.primaryBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isAttendant
+                    ? Icons.medical_services_rounded
+                    : Icons.personal_injury_rounded,
+                color: isAttendant ? AppColors.success : AppColors.primary,
+                size: 18,
+              ),
+            ),
+            title: Text('Current Role', style: AppTextStyles.body),
+            subtitle: Text(
+              isAttendant ? 'Attendant' : 'Patient',
+              style: AppTextStyles.caption,
+            ),
+            trailing: TextButton(
+              onPressed: () => _confirmSwitch(context, isAttendant),
+              child: Text(
+                isAttendant ? 'Switch to Patient' : 'Switch to Attendant',
+                style: AppTextStyles.caption
+                    .copyWith(color: AppColors.primary),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmSwitch(BuildContext context, bool currentlyAttendant) {
+    final newRole =
+        currentlyAttendant ? UserRole.patient : UserRole.attendant;
+    final label = currentlyAttendant ? 'Patient' : 'Attendant';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Switch to $label?',
+            style: AppTextStyles.h2),
+        content: Text(
+          currentlyAttendant
+              ? 'You will return to the patient monitoring view.'
+              : 'You will be taken to the Attendant dashboard where you can monitor a linked patient.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onRoleSwitch(newRole);
+            },
+            child: Text('Switch to $label'),
           ),
         ],
       ),

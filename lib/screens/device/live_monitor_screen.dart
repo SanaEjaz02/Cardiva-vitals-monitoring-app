@@ -41,9 +41,7 @@ class LiveMonitorScreen extends ConsumerWidget {
             // ── Vitals grid ──────────────────────────────────────────
             Expanded(
               child: readingAsync.when(
-                loading: () => const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                ),
+                loading: () => _NoDeviceState(),
                 error: (e, _) => Center(
                   child: Text('Error: $e', style: AppTextStyles.caption),
                 ),
@@ -90,7 +88,7 @@ class _DeviceBar extends StatelessWidget {
                     style: AppTextStyles.body
                         .copyWith(fontWeight: FontWeight.w600)),
                 Text(
-                  connected ? 'Live data streaming' : 'Showing simulated data',
+                  connected ? 'Live data streaming' : 'Waiting for device…',
                   style: AppTextStyles.caption.copyWith(
                       color: connected
                           ? AppColors.success
@@ -107,7 +105,7 @@ class _DeviceBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              connected ? 'LIVE' : 'DEMO',
+              connected ? 'LIVE' : 'OFF',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
@@ -344,6 +342,43 @@ class _VitalCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── No device connected state ─────────────────────────────────────────────────
+
+class _NoDeviceState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bluetooth_searching_rounded,
+                  color: AppColors.primary, size: 36),
+            ),
+            const SizedBox(height: 20),
+            Text('No Device Connected',
+                style: AppTextStyles.h2, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(
+              'Go to Profile → Connect Device and pair your Cardiva band to see live vitals here.',
+              style: AppTextStyles.caption,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/session_service.dart';
 import '../../theme/app_colors.dart';
+import '../attendant/attendant_home_screen.dart';
 import '../auth/auth_screen.dart';
 import '../main_nav_screen.dart';
 import '../onboarding/onboarding_screen.dart';
@@ -131,7 +133,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (isSignedIn) {
       await ref.read(userProvider.notifier).loadFromStore();
       if (!mounted) return;
-      _fadeNavigate(const MainNavScreen());
+      final role = ref.read(userProvider)?.role ?? UserRole.patient;
+      _fadeNavigate(role == UserRole.attendant
+          ? const AttendantHomeScreen()
+          : const MainNavScreen());
       return;
     }
 
