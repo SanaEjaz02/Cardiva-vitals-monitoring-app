@@ -37,7 +37,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
     // fail. UserNotifier itself outlives any widget.
     final notifier = ref.read(userProvider.notifier);
     final prefs = await SharedPreferences.getInstance();
-    final photoPath = prefs.getString('profile_photo_path');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final photoPath = prefs.getString('profile_photo_path_$uid');
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -56,10 +57,11 @@ class ProfileScreen extends ConsumerStatefulWidget {
             user?.updateDisplayName(name);
           }
           final p = await SharedPreferences.getInstance();
+          final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
           if (path != null) {
-            await p.setString('profile_photo_path', path);
+            await p.setString('profile_photo_path_$uid', path);
           } else {
-            await p.remove('profile_photo_path');
+            await p.remove('profile_photo_path_$uid');
           }
           if (updated != null) {
             notifier.updateProfile(updated);
@@ -123,8 +125,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
     final prefs = await SharedPreferences.getInstance();
 
-    // Photo
-    final path = prefs.getString('profile_photo_path');
+    // Photo — scoped per user so profiles never share the same picture
+    final path = prefs.getString('profile_photo_path_$uid');
     if (path != null && await File(path).exists() && mounted) {
       setState(() => _photoPath = path);
     }
@@ -178,18 +180,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             _user?.updateDisplayName(name);
           }
           final prefs = await SharedPreferences.getInstance();
+          final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
           if (photoPath != null) {
-            await prefs.setString('profile_photo_path', photoPath);
+            await prefs.setString('profile_photo_path_$uid', photoPath);
           } else if (_photoPath != null && photoPath == null) {
-            await prefs.remove('profile_photo_path');
+            await prefs.remove('profile_photo_path_$uid');
           }
           if (mounted) setState(() => _photoPath = photoPath);
           if (updatedProfile != null) {
             // Save immediately so UI updates without waiting for upload
             ref.read(userProvider.notifier).updateProfile(updatedProfile);
-            FirestoreService.saveProfile(updatedProfile.toJson())
-                .catchError((_) {});
-            final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await prefs.setString(
                 'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
             // Upload photo to Firebase Storage in background

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/messaging_service.dart';
 import '../../services/sms_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -170,6 +172,17 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       }
     }
 
+    // Push in-app alert to Firestore so linked attendants receive it instantly
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      MessagingService.sendAlert(
+        patientUid: uid,
+        patientName: userName,
+        type: widget.triggerType,
+        content: message,
+      ).catchError((_) {});
+    }
+
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _show1122 = true);
     });
@@ -315,7 +328,12 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.danger),
-                      onPressed: () {},
+                      onPressed: () async {
+                        final uri = Uri.parse('tel:1122');
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri);
+                        }
+                      },
                       child: const Text('Call 1122 Now'),
                     ),
                   ),

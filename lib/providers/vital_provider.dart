@@ -6,17 +6,9 @@ import '../models/health_event.dart';
 import '../models/vital_reading.dart';
 import '../services/ble_service.dart';
 import '../services/cloud_service.dart';
-import '../services/mock_data_service.dart';
 import 'user_provider.dart';
 
 // ── Service singletons ───────────────────────────────────────────────────────
-
-final mockDataServiceProvider = Provider<MockDataService>((ref) {
-  final svc = MockDataService();
-  svc.start();
-  ref.onDispose(svc.dispose);
-  return svc;
-});
 
 final cloudServiceProvider = Provider<CloudService>((ref) => CloudService());
 
@@ -26,17 +18,12 @@ final bleServiceProvider = Provider<BleService>((ref) {
   return svc;
 });
 
-// true = use BLE stream, false = use mock
+// true when BLE device is attached and notifications are active
 final bleConnectedProvider = StateProvider<bool>((ref) => false);
 
-// ── Live vital stream ────────────────────────────────────────────────────────
-// Automatically switches between BLE and mock data based on connection state.
+// ── Live vital stream — ALWAYS from the real hardware sensor ─────────────────
 final latestReadingProvider = StreamProvider<VitalReading>((ref) {
-  final useBle = ref.watch(bleConnectedProvider);
-  if (useBle) {
-    return ref.watch(bleServiceProvider).readingStream;
-  }
-  return ref.watch(mockDataServiceProvider).stream;
+  return ref.watch(bleServiceProvider).readingStream;
 });
 
 // ── Derived health event ─────────────────────────────────────────────────────

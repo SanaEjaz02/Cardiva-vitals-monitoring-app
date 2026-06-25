@@ -19,6 +19,7 @@ import '../screens/settings/help_support_screen.dart';
 import '../screens/report/health_report_screen.dart';
 import '../screens/device/device_connection_screen.dart';
 import '../screens/device/live_monitor_screen.dart';
+import '../screens/attendant/attendant_home_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
 
 class AppRouter {
@@ -54,6 +55,7 @@ class AppRouter {
   static const String deviceConnect = '/device/connect';
   static const String liveMonitor = '/device/live';
   static const String forgotPassword = '/auth/forgot-password';
+  static const String attendantHome = '/attendant/home';
 
   // ── Static route map (no path parameters) ─────────────────────────────────
   static Map<String, WidgetBuilder> get routes => {
@@ -82,6 +84,7 @@ class AppRouter {
         deviceConnect: (_) => const DeviceConnectionScreen(),
         liveMonitor: (_) => const LiveMonitorScreen(),
         forgotPassword: (_) => const ForgotPasswordScreen(),
+        attendantHome: (_) => const AttendantHomeScreen(),
       };
 
   // ── Dynamic route generator (handles /vitals/:id) ─────────────────────────

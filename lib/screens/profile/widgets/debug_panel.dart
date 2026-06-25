@@ -1,16 +1,17 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../models/vital_reading.dart';
 import '../../../providers/vital_provider.dart';
 
 /// Debug panel accessible from the Profile screen.
-/// Allows manual injection of specific vital scenarios for UI testing.
+/// Injects synthetic vital readings into the BLE stream for UI testing.
 class DebugPanel extends ConsumerWidget {
   const DebugPanel({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final svc = ref.read(mockDataServiceProvider);
+    final svc = ref.read(bleServiceProvider);
 
     return Card(
       elevation: 0,
@@ -41,9 +42,8 @@ class DebugPanel extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Manually inject vital readings to test UI flows.',
-              style: TextStyle(
-                  fontSize: 11, color: AppColors.textSecondary),
+              'Inject synthetic readings to test UI flows without hardware.',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 14),
             Wrap(
@@ -55,7 +55,14 @@ class DebugPanel extends ConsumerWidget {
                   color: AppColors.normal,
                   icon: Icons.check_circle_rounded,
                   onTap: () {
-                    svc.injectNormal();
+                    svc.injectReading(VitalReading(
+                      heartRate: 72,
+                      spO2: 98,
+                      hrv: 55,
+                      respirationRate: 16,
+                      activity: ActivityType.resting,
+                      fallDetected: false,
+                    ));
                     _snack(context, 'Normal reading injected');
                   },
                 ),
@@ -64,7 +71,14 @@ class DebugPanel extends ConsumerWidget {
                   color: AppColors.warning,
                   icon: Icons.warning_rounded,
                   onTap: () {
-                    svc.injectWarning();
+                    svc.injectReading(VitalReading(
+                      heartRate: 115,
+                      spO2: 93,
+                      hrv: 22,
+                      respirationRate: 24,
+                      activity: ActivityType.walking,
+                      fallDetected: false,
+                    ));
                     _snack(context, 'Warning reading injected');
                   },
                 ),
@@ -73,7 +87,14 @@ class DebugPanel extends ConsumerWidget {
                   color: AppColors.emergency,
                   icon: Icons.emergency_rounded,
                   onTap: () {
-                    svc.injectEmergency();
+                    svc.injectReading(VitalReading(
+                      heartRate: 155,
+                      spO2: 86,
+                      hrv: 10,
+                      respirationRate: 30,
+                      activity: ActivityType.running,
+                      fallDetected: false,
+                    ));
                     _snack(context, 'Emergency reading injected');
                   },
                 ),
@@ -82,7 +103,14 @@ class DebugPanel extends ConsumerWidget {
                   color: AppColors.emergency,
                   icon: Icons.man_rounded,
                   onTap: () {
-                    svc.injectFall();
+                    svc.injectReading(VitalReading(
+                      heartRate: 88,
+                      spO2: 95,
+                      hrv: 40,
+                      respirationRate: 18,
+                      activity: ActivityType.resting,
+                      fallDetected: true,
+                    ));
                     _snack(context, 'Fall detection injected');
                   },
                 ),
@@ -100,7 +128,8 @@ class DebugPanel extends ConsumerWidget {
         content: Text(msg, style: const TextStyle(fontSize: 13)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -126,12 +155,13 @@ class _DebugButton extends StatelessWidget {
       icon: Icon(icon, size: 14, color: color),
       label: Text(
         label,
-        style: TextStyle(
-            fontSize: 12, color: color, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600),
       ),
       style: OutlinedButton.styleFrom(
         side: BorderSide(color: color.withValues(alpha: 0.5)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         backgroundColor: color.withValues(alpha: 0.08),
       ),
