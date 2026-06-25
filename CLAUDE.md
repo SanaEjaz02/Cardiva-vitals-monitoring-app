@@ -151,6 +151,7 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-06-25` **Hafiza Sana Awan**: chore: app icon assets and icon generation tool
 - `2026-06-25` **Hafiza Sana Awan**: docs(thesis): complete Ch5-7, IEEE references, formatting & abbreviations
 - `2026-06-24` **Hafiza Sana Awan**: Merge remote-tracking branch 'origin/main' into feature-new-screens-and-ndk-fix
 - `2026-06-24` **Hafiza Sana Awan**: docs: add thesis document and progress notes
@@ -165,5 +166,4 @@ flutter analyze              # lint check
 - `2026-05-20` **Hafiza Sana Awan**: Command Line Setup
 - `2026-05-20` **Hafiza Sana Awan**: Command line setup
 - `2026-05-20` **KhansaBatool-54**: Bck navigation , AI chatbot and profil setup
-- `2026-05-20` **KhansaBatool-54**: Notication and Profile setting along with profile picture setup and data synchronization from firestore
 <!-- ACTIVITY:END -->
