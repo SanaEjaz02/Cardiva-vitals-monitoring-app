@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
@@ -8,21 +8,6 @@ import '../auth/auth_screen.dart';
 import '../main_nav_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 
-// Widget tree:
-// Scaffold (bgWhite)
-// └── Center
-//     └── FadeTransition (_entryFade)
-//         └── Column (min / center / center)
-//             ├── Container 96×96 (circle, gradient, shadow)
-//             │   └── Icon (monitor_heart_outlined, white, 48)
-//             ├── SizedBox(20)
-//             ├── Text "Cardiva"
-//             ├── SizedBox(8)
-//             ├── Text "Your heart, always watched"
-//             ├── SizedBox(60)
-//             └── _BouncingDots
-//                 └── AnimatedBuilder → Row → 3× Transform.translate → Container 8×8
-
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -31,67 +16,132 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _entryController;
-  late final Animation<double> _entryFade;
+    with TickerProviderStateMixin {
+  // Stage 1 — background fade-in
+  late final AnimationController _bgCtrl;
+  late final Animation<double> _bgFade;
+
+  // Stage 2 — ECG line sweeps across the screen
+  late final AnimationController _ecgCtrl;
+  late final Animation<double> _ecgProgress;
+  late final Animation<double> _ecgFadeOut;
+
+  // Stage 3 — shield icon scales in
+  late final AnimationController _shieldCtrl;
+  late final Animation<double> _shieldScale;
+  late final Animation<double> _shieldFade;
+
+  // Stage 4 — pulse-glow ring expands and fades
+  late final AnimationController _pulseCtrl;
+  late final Animation<double> _pulseScale;
+  late final Animation<double> _pulseAlpha;
+
+  // Stage 5 — app name + tagline slide up
+  late final AnimationController _textCtrl;
+  late final Animation<double> _textFade;
+  late final Animation<Offset> _textSlide;
 
   @override
   void initState() {
     super.initState();
-
-    _entryController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-
-    _entryFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _entryController, curve: Curves.easeOut),
-    );
-
-    _entryController.forward();
+    _initAnimations();
+    _runSequence();
     _resolveStartupRoute();
   }
 
-  /// Determines the first screen to show after the splash:
-  ///
-  ///   Signed in           → MainNavScreen  (Home)
-  ///   Signed out, first launch → OnboardingScreen
-  ///   Signed out, returning  → AuthScreen
-  ///
-  /// Firebase Auth restores sessions from the platform's secure store
-  /// (iOS Keychain / Android EncryptedSharedPreferences).  We wait for
-  /// [AuthService.checkSession] to resolve rather than reading
-  /// [currentUser] synchronously, because Firebase needs a moment after
-  /// cold start to load the cached credential.
+  void _initAnimations() {
+    _bgCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _bgFade = CurvedAnimation(parent: _bgCtrl, curve: Curves.easeOut);
+
+    _ecgCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100));
+    _ecgProgress =
+        CurvedAnimation(parent: _ecgCtrl, curve: Curves.easeInOut);
+    _ecgFadeOut = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _ecgCtrl,
+        curve: const Interval(0.75, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
+    _shieldCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700));
+    _shieldScale = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _shieldCtrl, curve: Curves.elasticOut),
+    );
+    _shieldFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _shieldCtrl,
+        curve: const Interval(0.0, 0.45, curve: Curves.easeOut),
+      ),
+    );
+
+    _pulseCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 950));
+    _pulseScale = Tween<double>(begin: 1.0, end: 1.9).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
+    );
+    _pulseAlpha = Tween<double>(begin: 0.55, end: 0.0).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeIn),
+    );
+
+    _textCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 550));
+    _textFade = CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut);
+    _textSlide =
+        Tween<Offset>(begin: const Offset(0, 0.45), end: Offset.zero).animate(
+      CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut),
+    );
+  }
+
+  Future<void> _runSequence() async {
+    // Stage 1: bg
+    _bgCtrl.forward();
+
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (!mounted) return;
+
+    // Stage 2: ECG sweep (1100 ms)
+    await _ecgCtrl.forward().orCancel.catchError((_) {});
+    if (!mounted) return;
+
+    // Stage 3: shield entrance
+    _shieldCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 320));
+    if (!mounted) return;
+
+    // Stage 4: pulse ring
+    _pulseCtrl.forward();
+    await Future.delayed(const Duration(milliseconds: 380));
+    if (!mounted) return;
+
+    // Stage 5: text slide-up
+    _textCtrl.forward();
+  }
+
   Future<void> _resolveStartupRoute() async {
-    // Run the minimum display timer and the Firebase session check together.
     bool isSignedIn = false;
     await Future.wait([
       Future.delayed(const Duration(milliseconds: 3500)),
       AuthService.checkSession().then((v) => isSignedIn = v),
     ]);
-
     if (!mounted) return;
 
     if (isSignedIn) {
-      // Load the real user profile from store before entering the app.
       await ref.read(userProvider.notifier).loadFromStore();
       if (!mounted) return;
       _fadeNavigate(const MainNavScreen());
       return;
     }
 
-    // No active session — check whether the user has seen onboarding before.
     final onboardingSeen = await SessionService.isOnboardingSeen();
     if (!mounted) return;
-
-    // First launch: show onboarding. Subsequent launches: go straight to login.
     _fadeNavigate(
       onboardingSeen ? const AuthScreen() : const OnboardingScreen(slide: 1),
     );
   }
 
-  /// Replaces the splash with [destination] using a smooth fade transition.
   void _fadeNavigate(Widget destination) {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -105,141 +155,354 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   void dispose() {
-    _entryController.dispose();
+    _bgCtrl.dispose();
+    _ecgCtrl.dispose();
+    _shieldCtrl.dispose();
+    _pulseCtrl.dispose();
+    _textCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: AppColors.bgWhite,
-      body: Center(
-        child: FadeTransition(
-          opacity: _entryFade,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 96,
-                height: 96,
+      body: AnimatedBuilder(
+        animation: Listenable.merge(
+            [_bgCtrl, _ecgCtrl, _shieldCtrl, _pulseCtrl, _textCtrl]),
+        builder: (context, _) => _buildBody(context, size),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, Size size) {
+    final bg = _bgFade.value;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.45, 1.0],
+          colors: [
+            Color.lerp(Colors.white, AppColors.bgLight, bg)!,
+            Color.lerp(Colors.white, const Color(0xFFADE8F4), bg * 0.55)!,
+            Colors.white,
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // ── Decorative corner blobs ────────────────────────────────────────
+          Positioned(
+            top: -60,
+            right: -60,
+            child: Opacity(
+              opacity: bg * 0.35,
+              child: Container(
+                width: 220,
+                height: 220,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    transform: GradientRotation(2.356),
-                    colors: [AppColors.primary, AppColors.primaryDeep],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accentTint.withValues(alpha: 0.5),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.monitor_heart_outlined,
-                  color: Colors.white,
-                  size: 48,
+                  color: AppColors.secondary.withValues(alpha: 0.25),
                 ),
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Cardiva',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Your heart, always watched',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 60),
-              const _BouncingDots(),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            bottom: -80,
+            left: -80,
+            child: Opacity(
+              opacity: bg * 0.25,
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                ),
+              ),
+            ),
+          ),
+
+          // ── ECG line ──────────────────────────────────────────────────────
+          Positioned(
+            left: 0,
+            right: 0,
+            top: size.height * 0.34,
+            height: 130,
+            child: Opacity(
+              opacity: _ecgFadeOut.value,
+              child: CustomPaint(
+                painter: _EcgLinePainter(
+                  progress: _ecgProgress.value,
+                  lineColor: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+
+          // ── Icon + text block ──────────────────────────────────────────────
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 150,
+                  height: 150,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer pulse ring
+                      if (_pulseCtrl.value > 0)
+                        Transform.scale(
+                          scale: _pulseScale.value,
+                          child: Container(
+                            width: 96,
+                            height: 96,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppColors.primary
+                                    .withValues(alpha: _pulseAlpha.value),
+                                width: 2.5,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Inner fill ring (slightly delayed)
+                      if (_pulseCtrl.value > 0.15)
+                        Transform.scale(
+                          scale: 1.0 + (_pulseScale.value - 1.0) * 0.5,
+                          child: Container(
+                            width: 96,
+                            height: 96,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.primary.withValues(
+                                  alpha: _pulseAlpha.value * 0.22),
+                            ),
+                          ),
+                        ),
+
+                      // Shield circle
+                      Transform.scale(
+                        scale: _shieldScale.value,
+                        child: Opacity(
+                          opacity: _shieldFade.value,
+                          child: Container(
+                            width: 96,
+                            height: 96,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.primaryDeep,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary
+                                      .withValues(alpha: 0.45),
+                                  blurRadius: 28,
+                                  spreadRadius: 4,
+                                ),
+                                BoxShadow(
+                                  color: AppColors.primary
+                                      .withValues(alpha: 0.18),
+                                  blurRadius: 56,
+                                  spreadRadius: 10,
+                                ),
+                              ],
+                            ),
+                            child: const Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(
+                                  Icons.shield_rounded,
+                                  color: Colors.white,
+                                  size: 54,
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.only(top: 3),
+                                  child: Icon(
+                                    Icons.favorite,
+                                    color: Color(0xFFFF8FAB),
+                                    size: 22,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // App name + tagline
+                FadeTransition(
+                  opacity: _textFade,
+                  child: SlideTransition(
+                    position: _textSlide,
+                    child: const Column(
+                      children: [
+                        Text(
+                          'Cardiva',
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Your heart, always watched',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _BouncingDots extends StatefulWidget {
-  const _BouncingDots();
+// ── ECG custom painter ────────────────────────────────────────────────────────
+
+class _EcgLinePainter extends CustomPainter {
+  final double progress;
+  final Color lineColor;
+
+  const _EcgLinePainter({required this.progress, required this.lineColor});
 
   @override
-  State<_BouncingDots> createState() => _BouncingDotsState();
-}
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
 
-class _BouncingDotsState extends State<_BouncingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+    final cy = size.height / 2;
+    final w = size.width;
 
-  static const List<Interval> _intervals = [
-    Interval(0.0, 0.6, curve: Curves.easeInOut),
-    Interval(0.15, 0.75, curve: Curves.easeInOut),
-    Interval(0.30, 0.90, curve: Curves.easeInOut),
-  ];
+    // Normalised (xFraction, yOffset-px) segments — two QRS cycles across width
+    const segments = <(double, double)>[
+      (0.00, 0),
+      (0.07, 0),
+      (0.11, -7),   // P wave
+      (0.14, -11),
+      (0.18, 0),
+      (0.23, 0),    // PR
+      (0.27, 5),    // Q dip
+      (0.30, -52),  // R peak
+      (0.33, 9),    // S dip
+      (0.37, 0),
+      (0.42, 0),    // ST
+      (0.46, -13),  // T wave
+      (0.50, -15),
+      (0.55, 0),
+      (0.61, 0),    // flat
+      (0.65, -7),   // P wave #2
+      (0.68, -11),
+      (0.72, 0),
+      (0.76, 0),
+      (0.80, 5),    // QRS #2
+      (0.83, -52),
+      (0.86, 9),
+      (0.89, 0),
+      (0.93, -13),  // T wave #2
+      (0.97, -15),
+      (1.00, 0),
+    ];
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat();
-  }
+    // Interpolate into a dense point list
+    final pts = <Offset>[];
+    for (int i = 0; i < segments.length - 1; i++) {
+      final (x1, y1) = segments[i];
+      final (x2, y2) = segments[i + 1];
+      final steps = ((x2 - x1) * w / 1.8).ceil().clamp(2, 80);
+      for (int j = 0; j < steps; j++) {
+        final t = j / steps;
+        pts.add(Offset(
+          (x1 + (x2 - x1) * t) * w,
+          cy + y1 + (y2 - y1) * t,
+        ));
+      }
+    }
+    pts.add(Offset(w, cy));
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+    final visible = (pts.length * progress).round().clamp(0, pts.length);
+    if (visible < 2) return;
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (_, __) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (int i = 0; i < 3; i++) ...[
-              if (i > 0) const SizedBox(width: 12),
-              Transform.translate(
-                offset: Offset(
-                  0,
-                  Tween<double>(begin: 0.0, end: -8.0)
-                      .animate(CurvedAnimation(
-                        parent: _controller,
-                        curve: _intervals[i],
-                      ))
-                      .value,
-                ),
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        );
-      },
+    final path = Path()..moveTo(pts[0].dx, pts[0].dy);
+    for (int i = 1; i < visible; i++) {
+      path.lineTo(pts[i].dx, pts[i].dy);
+    }
+
+    // Glow layer
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = lineColor.withValues(alpha: 0.28)
+        ..strokeWidth = 9
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
+
+    // Main line
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = lineColor.withValues(alpha: 0.72)
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // Bright leading dot
+    if (visible < pts.length) {
+      final lead = pts[visible - 1];
+      // glow halo
+      canvas.drawCircle(
+        lead,
+        9,
+        Paint()
+          ..color = lineColor.withValues(alpha: 0.22)
+          ..style = PaintingStyle.fill
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+      // solid dot
+      canvas.drawCircle(
+        lead,
+        4,
+        Paint()
+          ..color = lineColor
+          ..style = PaintingStyle.fill,
+      );
+    }
   }
+
+  @override
+  bool shouldRepaint(_EcgLinePainter old) =>
+      old.progress != progress || old.lineColor != lineColor;
 }
