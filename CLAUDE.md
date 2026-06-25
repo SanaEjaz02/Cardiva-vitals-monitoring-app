@@ -151,6 +151,7 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-06-24` **Hafiza Sana Awan**: docs: add thesis document and progress notes
 - `2026-06-18` **Hafiza Sana Awan**:  screen setup
 - `2026-06-18` **Hafiza Sana Awan**: small setup changes
 - `2026-06-18` **KhansaBatool-54**: Bluetooth connection with band and hardware data retreival
@@ -165,5 +166,4 @@ flutter analyze              # lint check
 - `2026-05-18` **KhansaBatool-54**: fix: reduce battery drain and make notifications dismissable
 - `2026-05-18` **KhansaBatool-54**: fix: reliable Firestore sync after account deletion and re-registration
 - `2026-05-18` **KhansaBatool-54**: FULL DELETE PROFILE SETUP
-- `2026-05-18` **KhansaBatool-54**: Merge remote: resolve firestore_service conflict, keep deleteAccount + saveFeedback
 <!-- ACTIVITY:END -->

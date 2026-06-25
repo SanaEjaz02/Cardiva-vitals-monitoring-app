@@ -90,7 +90,90 @@ Backup before edits: `backups/Thesis_20260623_205945.docx`.
 - **#14 references**: needs the writing phase.
 - Diagrams: open in Word and confirm the 15 figures are watermark-free and crisp.
 
+## TEMPLATE ALIGNMENT BATCH — 2026-06-24 (IST KICSIT FYP template)
+
+User supplied the official IST/KICSIT FYP template. Aligned Ch 5 & 6 to it.
+
+- [x] **Chapter 5 restructure** (backup `backups/Thesis_pre_ch5restructure_20260624_205720.docx`).
+      Light restructure to template headings, content preserved:
+      5.1 Software Components/Modules, 5.2 Hardware Components and Firmware (Vitals
+      Computation + OLED demoted under it as 5.2.4 / 5.2.5), 5.3 Hardware-Software
+      Integration, 5.4 Tools and Technologies. Fixed 3 stale `Section 5.1.5` cross-refs
+      to `5.1.6` (classification pipeline). TOC/fields refreshed. 114 pp.
+- [x] **Chapter 6 full rewrite** (backup `backups/Thesis_pre_ch6rewrite_20260624_213250.docx`).
+      Rewrote all prose to template structure (headings already matched): 6.1 Introduction,
+      6.2 Verification and Validation, 6.3 Test Cases/Suites/Scripts/Scenarios, 6.4 A Sample
+      Testing Cycle, 6.5 Test Cases, 6.5.1 Sample Test Case. Reused Tables 6.1
+      (troubleshooting) & 6.2 (representative cases) verbatim. **Rebuilt Table 6.3 into the
+      template's exact test-case form** (Test Case id / Test Item / Author=Project Team /
+      Documentation Date / Test Type / Test Case Name / Component / Release-Version /
+      Description+Operation Procedure full-width / Pre+Post-conditions / Input+Expected) for
+      the end-to-end fall-detection scenario. Method: spliced built OOXML into document.xml,
+      validated well-formedness, refreshed via Word COM. 114 pp.
+- [x] **Chapter 6 detailed test cases** (backup `backups/Thesis_pre_detailcases_20260624_215225.docx`).
+      Added 6.5.2 Detailed Test Cases: expanded all 10 summary cases (TC-01..TC-10) into
+      individual compact per-case tables (Tables 6.4-6.13: ID, Name, Objective, Precondition,
+      Test Steps, Test Data/Input, Expected Result, Actual Result, Status). Status = Pass per
+      user's real testing; TC-10 (respiration) = Qualitative/demo-grade. Light-blue label
+      column. All grounded in code/firmware (no fabricated metrics). Now 31 tables, 119 pp.
+
+## CHAPTER 7 — 2026-06-24 (backup `backups/Thesis_pre_ch7_20260624_221136.docx`)
+- [x] **Chapter 7 — Conclusion** written + inserted after Ch 6. Auto-numbered "Chapter 7".
+      Subsections: 7.1 Summary of the Work, 7.2 Achievement of Objectives, 7.3 Limitations,
+      7.4 Future Work. Grounded in project (ESP32+Flutter, 6 vitals, 4-class, fall SM, SMS).
+      121 pp.
+
+## REFERENCES PASS — DONE 2026-06-24 (backup `backups/Thesis_pre_refs_20260624_222740.docx`)
+- [x] Relocated the misplaced References block (was between Ch 4 and Ch 5) to the END, after
+      Ch 7. Removed it + ~35 empty filler paragraphs (saved ~2 pp). Ch 4 content intact,
+      flows straight into Ch 5. Verified (VitalSignAnalyzer class section present).
+- [x] Rebuilt 8 entries [1]-[8] in clean IEEE format: fixed smart quotes, removed broken
+      `](https://…` markdown artifacts + utm_source=chatgpt.com junk, fixed ISSN hyphens.
+- [x] "References" heading = Heading1 with numId=0 (unnumbered, centered, no "Chapter 8");
+      appears in TOC at p104 unnumbered (matches template).
+- [x] In-text citations added surgically in Ch 3 (additive [n] before sentence period, no
+      prose rewrite): [7] @ 3.1 wearables-interest sentence; [8] @ 3.1 multi-vital
+      integration; [6] @ 3.3 AI/ML applications; [1],[2],[3],[4] @ 3.3 ML health-state
+      classification (datasets); [5] @ 3.4 SMS emergency notification. Placed on GENERAL
+      statements, not on the already-named works (Dias/Khalaf/Chan) -> no misattribution.
+      All 5 Find/Replace returned True; verified literally in body. 119 physical pp.
+
+## FORMATTING PASS — 2026-06-25 (rulebook: thesis-formatting-guide.md)
+Audited full doc vs rulebook. Already-compliant (NOT touched): Normal TNR12 justified 1.5;
+H1 16 center bold / H2-4 14/13/12 left bold; keep-with-next on; Caption TNR12 justified;
+TOC1-3 single; Normal(Web) already justified TNR12; 3 sections (cover=NO number, front=roman,
+content=arabic restart@1, footers unlinked); each chapter on a new page; captions above tables;
+single List of Abbreviations; References unnumbered at end; Track Changes off / 0 revisions.
+- [x] Fix 1: deleted 2 stray empty Heading 1 paragraphs before References.
+- [x] Fix 2: locked Table 2 (Committee Members approval block) cant-split — all 31 tables now no-split.
+- [x] Refreshed TOC + List of Tables/Figures + caption numbers (F9 equiv). 119 pp, 0 revisions.
+- [ ] OPTIONAL not done: make chapter page-breaks robust (style-level pbBefore + remove 5 manual
+      breaks). Current state renders correctly; left alone per user.
+- [x] Abbreviations (handwritten note v/vi) — DONE 2026-06-25 (backup Thesis_pre_abbr_*).
+      Margins verified Top/Bottom/Right=1in, Left=1.5in; no page border. Fixed redefinitions
+      (rule "first instance only"): PPG 3x->1x (removed Ch3,Ch4 re-defs), BLE 3x->1x (removed
+      Ch4,Ch5 re-defs); defined AI + GPS in Abstract (now AI=2 abstract+Ch1, GPS=2 abstract+Ch3).
+      NOTE: Word COM had hung on a leftover Document-Recovery pane after a force-kill; fixed by
+      `reg delete HKCU\...\Word\Resiliency /f` (Office 15.0). Style consistent (rule vi) already.
+- [x] List of Abbreviations completeness (option A) — DONE 2026-06-25 (backup Thesis_pre_ablist_*).
+      Added 7 abbreviations that were used+defined in text but missing from the front-matter
+      table, alphabetically: I2C (Inter-Integrated Circuit), MVC (Model-View-Controller),
+      PERS (Personal Emergency Response System), SDNN (Standard Deviation of Normal-to-Normal
+      Intervals), SVM (Support Vector Machine), TLS (Transport Layer Security), UUID
+      (Universally Unique Identifier). List now 33 entries.
+- [x] Moved pre-existing out-of-order UI/UID into alphabetical position (now ...TLS, UI, UID,
+      URL, UUID, WHO...). List fully alphabetical. (backup Thesis_pre_uifix_*)
+- [x] Option B — DONE 2026-06-25 (backup Thesis_pre_optB_*). Spelled out at first PROSE use +
+      added to List: JSON (Ch4), OLED/PDF/SDK/IMU (Ch5), HRV (Ch6), ERD (Ch4 heading "Entity
+      Relationship Diagram (ERD) and Database Design"). Each defined once (ERD=2 = heading+TOC
+      mirror, correct). List now 40 abbreviations. SKIPPED HR + RR by design: they appear only
+      in code/diagram labels + table cells (JSON "hr"/"rr", transmitVitalSigns(HR:...), "Observe
+      RR readout"); prose always uses full "heart rate"/"respiration rate", so a prose
+      definition would be wrong. SpO2 + ESP32 = no action (already defined / product name).
+- [ ] STILL MANUAL (visual): figure captions-below + diagrams watermark-free/clear (§3).
+
 ## WRITING — PENDING
-- [x] **Chapter 5 — Implementation** — written and formatted (2026-06-23).
-- [x] **Chapter 6 — Testing** — written and formatted (2026-06-23).
-- [ ] Chapters 7–8 + in-text citations/references (#14). Awaiting chapter-writing rules.
+- [x] **Chapter 5 — Implementation** — template-aligned (2026-06-24).
+- [x] **Chapter 6 — Testing** — template-aligned + 10 detailed cases (2026-06-24).
+- [x] **Chapter 7 — Conclusion** — written (2026-06-24).
+- [x] **References pass** — relocated + cleaned to IEEE + in-text citations [1]-[8] in Ch 3 (2026-06-24).
