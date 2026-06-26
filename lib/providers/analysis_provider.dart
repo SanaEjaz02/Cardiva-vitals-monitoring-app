@@ -9,6 +9,7 @@ import '../models/health_report.dart';
 import '../providers/settings_provider.dart' show kReportHourKey, kReportMinuteKey, kLastReportDayKey;
 import '../models/ml_prediction.dart';
 import '../services/firestore_service.dart';
+import '../services/link_service.dart';
 import '../services/ml_service.dart';
 import '../services/notification_service.dart';
 import 'user_provider.dart';
@@ -303,6 +304,33 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
         respirationRate: reading.respirationRate,
       ));
 
+      // Push latest vitals to Firebase for linked attendants
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final statusLabel = switch (prediction.alertClass) {
+          AlertClass.emergency   => 'Emergency',
+          AlertClass.fallAlert   => 'Fall Alert',
+          AlertClass.vitalsAlert => 'Vitals Alert',
+          AlertClass.normal      => 'Normal',
+        };
+        final score = switch (prediction.alertClass) {
+          AlertClass.emergency   => 20.0,
+          AlertClass.fallAlert   => 45.0,
+          AlertClass.vitalsAlert => 60.0,
+          AlertClass.normal      => 90.0,
+        };
+        LinkService.pushLatestVitals(
+          patientUid: uid,
+          patientName: user?.name ?? 'Patient',
+          heartRate: reading.heartRate,
+          spO2: reading.spO2,
+          hrv: reading.hrv,
+          respirationRate: reading.respirationRate,
+          healthStatus: statusLabel,
+          healthScore: score,
+        ).catchError((_) {});
+      }
+
       if (prediction.alertClass == AlertClass.emergency) {
         await NotificationService.showEmergencyNotification(
           'CARDIVA Emergency',
@@ -444,6 +472,33 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
       hrv: hrv,
       respirationRate: respirationRate,
     ));
+
+    // Push latest vitals to Firebase for linked attendants
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final statusLabel = switch (prediction.alertClass) {
+        AlertClass.emergency   => 'Emergency',
+        AlertClass.fallAlert   => 'Fall Alert',
+        AlertClass.vitalsAlert => 'Vitals Alert',
+        AlertClass.normal      => 'Normal',
+      };
+      final score = switch (prediction.alertClass) {
+        AlertClass.emergency   => 20.0,
+        AlertClass.fallAlert   => 45.0,
+        AlertClass.vitalsAlert => 60.0,
+        AlertClass.normal      => 90.0,
+      };
+      LinkService.pushLatestVitals(
+        patientUid: uid,
+        patientName: user?.name ?? 'Patient',
+        heartRate: heartRate,
+        spO2: spo2,
+        hrv: hrv,
+        respirationRate: respirationRate,
+        healthStatus: statusLabel,
+        healthScore: score,
+      ).catchError((_) {});
+    }
 
     return prediction;
   }

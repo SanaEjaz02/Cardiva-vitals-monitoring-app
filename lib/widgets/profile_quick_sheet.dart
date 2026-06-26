@@ -307,10 +307,10 @@ class _SheetBodyState extends ConsumerState<_SheetBody> {
                                   : 'No sensor',
                               showChevron: false,
                             ),
-                            // Attendants
+                            // Guardians
                             _row(
                               icon: Icons.people_outline_rounded,
-                              label: 'Attendants',
+                              label: 'Guardians',
                               value: _attendants.isEmpty
                                   ? 'None'
                                   : '${_attendants.length}',

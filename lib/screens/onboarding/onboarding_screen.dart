@@ -331,6 +331,6 @@ const _slides = [
   ),
   _SlideData(
     'Always connected to care',
-    'Emergency contacts and attendants are alerted instantly with your live location when it matters most.',
+    'Guardians are alerted instantly with your live location when it matters most.',
   ),
 ];

@@ -15,11 +15,13 @@ class NotificationService {
   static const _idEmergency = 1;
   static const _idWarning   = 2;
   static const _idReport    = 3;
+  static const _idChat      = 4;
 
   // Channel IDs
   static const _chEmergency = 'cardiva_emergency';
   static const _chWarning   = 'cardiva_warning';
   static const _chReports   = 'cardiva_reports';
+  static const _chChat      = 'cardiva_chat';
 
   // Payloads — used to deep-link on notification tap
   static const _payloadVitalsAi = 'vitals_ai';
@@ -78,6 +80,17 @@ class NotificationService {
       ),
     );
 
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _chChat,
+        'Chat Messages',
+        description: 'Messages from guardians and patients.',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+
     await android?.requestNotificationsPermission();
 
     // Handle tap when app was completely closed and user taps notification
@@ -113,6 +126,26 @@ class NotificationService {
       case _payloadReport:
         navigator.pushNamed(AppRouter.weeklyReport);
     }
+  }
+
+  // ── Chat message notification ─────────────────────────────────────────────
+
+  static Future<void> showChatNotification(
+    String title,
+    String body,
+  ) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _chChat,
+        'Chat Messages',
+        channelDescription: 'Messages from guardians and patients.',
+        importance: Importance.high,
+        priority: Priority.high,
+        autoCancel: true,
+        icon: '@mipmap/ic_launcher',
+      ),
+    );
+    await _plugin.show(_idChat, title, body, details);
   }
 
   // ── Daily report notification ─────────────────────────────────────────────

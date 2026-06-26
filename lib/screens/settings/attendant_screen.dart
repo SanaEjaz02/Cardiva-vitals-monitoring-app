@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/attendant.dart';
 import '../../services/firestore_service.dart';
+import '../../services/link_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
@@ -60,12 +61,27 @@ class _AttendantScreenState extends State<AttendantScreen> {
   }
 
   Future<void> _save() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     final json = jsonEncode(_attendants.map((a) => a.toJson()).toList());
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_storageKey, json);
-    FirestoreService.saveAttendants(
-            _attendants.map((a) => a.toJson()).toList())
-        .catchError((_) {});
+    try {
+      await FirestoreService.saveAttendants(
+          _attendants.map((a) => a.toJson()).toList());
+    } catch (_) {}
+    // Auto-link any guardians who are already registered with matching emails
+    if (uid != null) {
+      final emails = _attendants
+          .map((a) => (a.email ?? '').trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (emails.isNotEmpty) {
+        LinkService.autoLinkByEmails(
+          patientUid: uid,
+          guardianEmails: emails,
+        ).catchError((_) {});
+      }
+    }
   }
 
   @override
@@ -77,7 +93,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Attendants', style: AppTextStyles.h1),
+        title: Text('Guardians', style: AppTextStyles.h1),
         actions: [
           TextButton(
             onPressed: () => _showAttendantSheet(context, null),
@@ -103,7 +119,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
                       ),
                     ),
                     child: Text(
-                      'Attendants can monitor your vitals and will be notified during emergencies. Different from emergency contacts.',
+                      'Guardians linked via QR code can monitor your vitals and will be notified during emergencies.',
                       style: AppTextStyles.caption,
                     ),
                   ),
@@ -166,7 +182,7 @@ class _AttendantScreenState extends State<AttendantScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Remove attendant?', style: AppTextStyles.h2),
+        title: Text('Remove guardian?', style: AppTextStyles.h2),
         content: Text(
           'They will no longer receive emergency alerts.',
           style: AppTextStyles.body,
@@ -346,7 +362,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  widget.existing == null ? 'Add Attendant' : 'Edit Attendant',
+                  widget.existing == null ? 'Add Guardian' : 'Edit Guardian',
                   style: AppTextStyles.h2,
                 ),
                 const SizedBox(height: 20),
@@ -423,7 +439,7 @@ class _AttendantSheetState extends State<_AttendantSheet> {
                       widget.onSave(att);
                       Navigator.pop(context);
                     },
-                    child: const Text('Save Attendant'),
+                    child: const Text('Save Guardian'),
                   ),
                 ),
               ],
@@ -449,11 +465,11 @@ class _EmptyState extends StatelessWidget {
           const Icon(Icons.person_add_outlined,
               size: 64, color: AppColors.accentTint),
           const SizedBox(height: 12),
-          Text('No attendants added yet', style: AppTextStyles.caption),
+          Text('No guardians added yet', style: AppTextStyles.caption),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: onAdd,
-            child: const Text('Add Attendant'),
+            child: const Text('Add Guardian'),
           ),
         ],
       ),

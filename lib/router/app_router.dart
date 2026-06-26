@@ -20,7 +20,11 @@ import '../screens/report/health_report_screen.dart';
 import '../screens/device/device_connection_screen.dart';
 import '../screens/device/live_monitor_screen.dart';
 import '../screens/attendant/attendant_home_screen.dart';
+import '../screens/attendant/attendant_main_screen.dart';
 import '../screens/auth/forgot_password_screen.dart';
+import '../screens/auth/role_selection_screen.dart';
+import '../screens/profile/patient_qr_screen.dart';
+import '../screens/chat/patient_chat_screen.dart';
 
 class AppRouter {
   AppRouter._();
@@ -56,6 +60,10 @@ class AppRouter {
   static const String liveMonitor = '/device/live';
   static const String forgotPassword = '/auth/forgot-password';
   static const String attendantHome = '/attendant/home';
+  static const String attendantMain = '/attendant';
+  static const String roleSelection = '/auth/role';
+  static const String patientQr     = '/patient/qr';
+  static const String patientChat   = '/patient/chat';
 
   // ── Static route map (no path parameters) ─────────────────────────────────
   static Map<String, WidgetBuilder> get routes => {
@@ -85,6 +93,10 @@ class AppRouter {
         liveMonitor: (_) => const LiveMonitorScreen(),
         forgotPassword: (_) => const ForgotPasswordScreen(),
         attendantHome: (_) => const AttendantHomeScreen(),
+        attendantMain: (_) => const AttendantMainScreen(),
+        roleSelection: (_) => const RoleSelectionScreen(),
+        patientQr:     (_) => const PatientQrScreen(),
+        patientChat:   (_) => const PatientChatScreen(),
       };
 
   // ── Dynamic route generator (handles /vitals/:id) ─────────────────────────

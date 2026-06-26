@@ -1,23 +1,20 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/messaging_service.dart';
-import '../../services/sms_service.dart';
+import '../../core/app_navigator.dart';
+import '../../models/chat_message.dart';
+import '../../services/chat_service.dart';
+import '../../services/link_service.dart';
+import '../../services/location_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../router/app_router.dart';
 
 class EmergencyPopup extends StatefulWidget {
   final String triggerType; // fall | lowSpo2 | highHr | manual
-  final VoidCallback? onDismiss;
-
   const EmergencyPopup({
     super.key,
     required this.triggerType,
-    this.onDismiss,
   });
 
   static Future<void> show(BuildContext context, String triggerType) {
@@ -28,7 +25,6 @@ class EmergencyPopup extends StatefulWidget {
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, anim, _) => EmergencyPopup(
         triggerType: triggerType,
-        onDismiss: () => Navigator.of(ctx).pop(),
       ),
       transitionBuilder: (ctx, anim, _, child) {
         return BackdropFilter(
@@ -58,6 +54,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
   Timer? _timer;
   bool _alertSent = false;
   bool _show1122 = false;
+  String? _mapsLink; // fetched during countdown
 
   // Loaded from SharedPreferences (user-scoped)
   List<_AlertContact> _contacts = [];
@@ -92,44 +89,42 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       return ctrl;
     });
     _loadContacts();
+    _fetchLocation();
     _startCountdown();
   }
 
+  Future<void> _fetchLocation() async {
+    try {
+      final pos = await LocationService.getCurrentPosition();
+      if (mounted) {
+        _mapsLink =
+            'https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadContacts() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
-    final prefs = await SharedPreferences.getInstance();
-    final contacts = <_AlertContact>[];
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
-    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
-    if (ecRaw != null) {
-      final list = jsonDecode(ecRaw) as List;
-      for (final j in list) {
-        final phone = (j['phone'] as String? ?? '').trim();
+    // Load linked guardians from Firestore — they serve as the emergency recipients
+    try {
+      final guardians = await LinkService.guardianContactDetails(uid);
+      final contacts = <_AlertContact>[];
+      for (final g in guardians) {
+        final phone = (g['phone'] as String? ?? '').trim();
+        final name = g['name'] as String? ?? 'Guardian';
         if (phone.isNotEmpty) {
-          contacts.add(_AlertContact(
-            name: j['name'] as String? ?? 'Contact',
-            phone: phone,
-          ));
+          contacts.add(_AlertContact(name: name, phone: phone));
+        } else {
+          // Include guardian even without phone so the "Will notify" card shows
+          contacts.add(_AlertContact(name: name, phone: ''));
         }
       }
+      if (mounted) setState(() => _contacts = contacts);
+    } catch (_) {
+      if (mounted) setState(() => _contacts = []);
     }
-
-    final attRaw = prefs.getString('attendants_${uid}_v1');
-    if (attRaw != null) {
-      final list = jsonDecode(attRaw) as List;
-      for (final j in list) {
-        final notifySms = j['notifyViaSms'] as bool? ?? true;
-        final phone = (j['phone'] as String? ?? '').trim();
-        if (notifySms && phone.isNotEmpty) {
-          contacts.add(_AlertContact(
-            name: j['name'] as String? ?? 'Attendant',
-            phone: phone,
-          ));
-        }
-      }
-    }
-
-    if (mounted) setState(() => _contacts = contacts);
   }
 
   void _startCountdown() {
@@ -157,53 +152,57 @@ class _EmergencyPopupState extends State<EmergencyPopup>
         : widget.triggerType == 'manual'
             ? 'SOS ACTIVATED'
             : 'CRITICAL VITALS';
+    final locationLine =
+        _mapsLink != null ? '\n📍 $_mapsLink' : '';
     final message = '🚨 CARDIVA EMERGENCY — $typeLabel\n'
         'Patient: $userName\n'
         'Needs immediate assistance. Please respond now.\n'
-        '— Sent by Cardiva Health Monitor';
+        '— Sent by Cardiva Health Monitor$locationLine';
 
-    final phones = _contacts.map((c) => c.phone).toList();
-    if (phones.isNotEmpty) {
-      SmsService.sendSmsToAll(phones: phones, message: message).catchError((_) {});
-      for (int i = 0; i < phones.length; i++) {
-        Future.delayed(Duration(milliseconds: i * 800), () {
-          SmsService.sendWhatsApp(to: phones[i], message: message).catchError((_) {});
-        });
-      }
-    }
-
-    // Push in-app alert to Firestore so linked attendants receive it instantly
+    // Send in-app emergency alert via Cardiva Chat to all linked guardians
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      MessagingService.sendAlert(
-        patientUid: uid,
-        patientName: userName,
-        type: widget.triggerType,
-        content: message,
-      ).catchError((_) {});
+      LinkService.linkedAttendantsStream(uid).first.then((attendantUids) {
+        for (final aUid in attendantUids) {
+          ChatService.sendMessage(
+            patientUid: uid,
+            guardianUid: aUid,
+            senderUid: uid,
+            senderName: userName,
+            text: message,
+            type: MessageType.emergency,
+          ).catchError((_) {});
+        }
+      }).catchError((_) {});
     }
 
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _show1122 = true);
     });
+
+    // Automatically navigate to the chat tab 2.5 s after sending so the patient
+    // can see the alert in their chat and wait for guardian replies.
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) _openChat();
+    });
   }
 
   void _cancel() {
     _timer?.cancel();
-    widget.onDismiss?.call();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Alert cancelled.', style: AppTextStyles.body),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Alert cancelled.', style: AppTextStyles.body),
+        backgroundColor: AppColors.success,
+      ),
+    );
+    Navigator.of(context).pop();
   }
 
-  void _navigateToAlertSent() {
-    widget.onDismiss?.call();
-    Navigator.pushNamed(context, AppRouter.alertSent);
+  void _openChat() {
+    // Signal MainNavScreen to switch to the chat tab BEFORE popping,
+    // so the listener fires while the screen is still fully mounted.
+    mainNavTabNotifier.value = 3;
+    Navigator.of(context).pop();
   }
 
   @override
@@ -316,7 +315,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Nearest attendant is 23 minutes away. Call 1122 emergency services?',
+                      'Nearest guardian is 23 minutes away. Call 1122 emergency services?',
                       style:
                           AppTextStyles.body.copyWith(color: AppColors.danger),
                       textAlign: TextAlign.center,
@@ -345,8 +344,8 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                         side: const BorderSide(color: AppColors.danger),
                         foregroundColor: AppColors.danger,
                       ),
-                      onPressed: _navigateToAlertSent,
-                      child: const Text('No, wait for attendant'),
+                      onPressed: _openChat,
+                      child: const Text('Open Cardiva Chat'),
                     ),
                   ),
                 ] else if (!_alertSent) ...[
@@ -377,8 +376,8 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _navigateToAlertSent,
-                      child: const Text('View Details'),
+                      onPressed: _openChat,
+                      child: const Text('Open Cardiva Chat'),
                     ),
                   ),
                 ],
@@ -408,7 +407,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'No emergency contacts set. Add contacts in Settings.',
+                'No guardian linked yet. Add a guardian in Settings → Attendants to receive in-app alerts.',
                 style: AppTextStyles.caption,
               ),
             ),
@@ -441,12 +440,15 @@ class _EmergencyPopupState extends State<EmergencyPopup>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Will notify:', style: AppTextStyles.caption),
+                Text('Will notify via Cardiva Chat:',
+                    style: AppTextStyles.caption),
                 Text(primary.name, style: AppTextStyles.h2),
-                Text(primary.phone, style: AppTextStyles.caption),
+                Text('In-app message',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.primary)),
                 if (extra > 0)
                   Text(
-                    '+$extra more contact${extra > 1 ? 's' : ''}',
+                    '+$extra more guardian${extra > 1 ? 's' : ''}',
                     style: AppTextStyles.caption
                         .copyWith(color: AppColors.primary),
                   ),

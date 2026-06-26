@@ -99,7 +99,7 @@ class _PredictionResultScreenState
           ],
         ),
         content: Text(
-          'This will notify your emergency contacts via SMS with your current location.',
+          'This will notify your guardians via SMS with your current location.',
           style: AppTextStyles.body,
         ),
         actions: [
@@ -365,7 +365,7 @@ class _PredictionResultScreenState
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: AppColors.danger)),
                   const SizedBox(width: 10),
-                  Text('Sending alert to emergency contacts…',
+                  Text('Sending alert to guardians…',
                       style: AppTextStyles.body),
                 ],
               )
@@ -375,7 +375,7 @@ class _PredictionResultScreenState
                   const Icon(Icons.check_circle_rounded,
                       color: AppColors.success, size: 18),
                   const SizedBox(width: 8),
-                  Text('Alert sent to emergency contacts.',
+                  Text('Alert sent to guardians.',
                       style: AppTextStyles.body
                           .copyWith(color: AppColors.success)),
                 ],
@@ -431,8 +431,8 @@ class _PredictionResultScreenState
           const SizedBox(height: 8),
           Text(
             _alertSent
-                ? 'Alert sent to emergency contacts.'
-                : 'Do you want to notify your emergency contacts?',
+                ? 'Alert sent to guardians.'
+                : 'Do you want to notify your guardians?',
             style: AppTextStyles.body.copyWith(
               color: _alertSent ? AppColors.success : null,
             ),

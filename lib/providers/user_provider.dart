@@ -14,19 +14,28 @@ class UserNotifier extends StateNotifier<UserProfile?> {
   void updateProfile(UserProfile updated) => state = updated;
 
   /// Loads the real profile on login: SharedPreferences first, Firestore fallback.
-  /// Also syncs local data back to Firestore in case a previous save failed.
+  /// Always clears stale state first so a different user's data is never shown.
   Future<void> loadFromStore() async {
+    state = null; // clear any stale profile from the previous session
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('user_profile_$uid');
       if (raw != null) {
-        final profile =
-            UserProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-        state = profile;
+        // Use the cached profile immediately — no blocking Firestore call.
+        // The role is already stored in the JSON. Refresh it in the background
+        // in case the user changed roles on another device.
+        state = UserProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        FirestoreService.loadRole().then((r) {
+          if (r != null) {
+            final roleEnum =
+                r == 'attendant' ? UserRole.attendant : UserRole.patient;
+            state = state?.copyWith(role: roleEnum);
+          }
+        }).catchError((_) {});
         // Heal: push local data to Firestore in case the initial save failed
-        FirestoreService.saveProfile(profile.toJson()).catchError((_) {});
+        FirestoreService.saveProfile(state!.toJson()).catchError((_) {});
         return;
       }
       // Not cached locally — pull from Firestore

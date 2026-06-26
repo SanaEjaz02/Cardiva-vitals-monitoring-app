@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/firestore_service.dart';
+import '../../services/link_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
@@ -39,7 +40,6 @@ class _EmergencyContactSetupScreenState
     if (_nameCtrl.text.isEmpty || _phoneCtrl.text.isEmpty) return;
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
     final rawPhone = _phoneCtrl.text.trim();
-    // Prepend country code if the user typed only the local number
     final phone = rawPhone.startsWith('+') ? rawPhone : '+92$rawPhone';
     setState(() {
       _contacts.add(EmergencyContact(
@@ -48,6 +48,7 @@ class _EmergencyContactSetupScreenState
         name: _nameCtrl.text.trim(),
         relation: _relationship ?? 'Family',
         phone: phone,
+        email: _emailCtrl.text.trim(),
       ));
       _nameCtrl.clear();
       _phoneCtrl.clear();
@@ -59,7 +60,6 @@ class _EmergencyContactSetupScreenState
   Future<void> _finish() async {
     setState(() => _saving = true);
     try {
-      // Auto-add whatever is still typed in the fields
       if (_nameCtrl.text.isNotEmpty && _phoneCtrl.text.isNotEmpty) {
         _addContact();
       }
@@ -69,16 +69,34 @@ class _EmergencyContactSetupScreenState
           'id': c.id,
           'name': c.name,
           'phone': c.phone,
+          'email': c.email,
           'relationship': c.relation,
         }).toList();
-        // Save locally first — this is instant
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(
-            'emergency_contacts_${uid}_v1', jsonEncode(jsonList));
-        // Firestore sync in background — don't await, it's slow on first write
-        FirestoreService.saveEmergencyContacts(jsonList).catchError((_) {});
+            'manual_guardians_${uid}_v1', jsonEncode(jsonList));
+        // Awaited so we know if it fails; rethrows on error
+        await FirestoreService.saveManualGuardians(jsonList);
+        // Auto-link any guardians who are already registered with matching emails
+        final emails = _contacts
+            .map((c) => c.email.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (emails.isNotEmpty) {
+          LinkService.autoLinkByEmails(
+            patientUid: uid,
+            guardianEmails: emails,
+          ).catchError((_) {});
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save contacts: $e')),
+      );
+      setState(() => _saving = false);
+      return;
+    }
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
@@ -125,11 +143,11 @@ class _EmergencyContactSetupScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Add emergency contact',
+                    Text('Add a guardian',
                         style: AppTextStyles.h1),
                     const SizedBox(height: 6),
                     Text(
-                      'They will be alerted immediately if a critical emergency is detected.',
+                      'Your guardian will be notified immediately if an emergency is detected.',
                       style: AppTextStyles.body
                           .copyWith(color: AppColors.textSecondary),
                     ),
@@ -294,7 +312,7 @@ class _EmergencyContactSetupScreenState
                       OutlinedButton.icon(
                         onPressed: _addContact,
                         icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Add Contact'),
+                        label: const Text('Add Guardian'),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),

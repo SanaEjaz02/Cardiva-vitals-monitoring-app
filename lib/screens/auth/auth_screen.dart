@@ -1,11 +1,17 @@
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/user_profile.dart';
+import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../../router/app_router.dart';
+import '../attendant/attendant_main_screen.dart';
+import '../main_nav_screen.dart';
 import 'forgot_password_screen.dart';
+import 'role_selection_screen.dart';
 
 // Returns 0 (empty) to 5 (very strong)
 int _calcStrength(String p) {
@@ -57,17 +63,22 @@ Color _strengthColor(int s) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class AuthScreen extends StatefulWidget {
+class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  State<AuthScreen> createState() => _AuthScreenState();
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen>
+class _AuthScreenState extends ConsumerState<AuthScreen>
     with SingleTickerProviderStateMixin {
   bool _isLogin = true;
   late AnimationController _switchController;
+
+  // Role for login (patient by default)
+  UserRole _loginRole = UserRole.patient;
+  // Role selected during registration
+  UserRole _registerRole = UserRole.patient;
 
   // Login fields
   final _loginFormKey = GlobalKey<FormState>();
@@ -137,7 +148,7 @@ class _AuthScreenState extends State<AuthScreen>
           password: _loginPass.text,
         );
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+        await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
         return;
       } else {
         final cred = await AuthService.signUpWithEmail(
@@ -145,14 +156,81 @@ class _AuthScreenState extends State<AuthScreen>
           password: _registerPass.text,
         );
         await cred.user?.updateDisplayName(_registerName.text.trim());
+
+        // Save role to Firestore — fire-and-forget so a rules/network failure
+        // never blocks navigation. Role is re-saved in RoleSelectionScreen.
+        final roleStr = _registerRole == UserRole.attendant ? 'attendant' : 'patient';
+        FirestoreService.saveRole(roleStr).catchError((_) {});
+
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, AppRouter.setupProfile);
+        // RoleSelectionScreen confirms the role the user already picked
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RoleSelectionScreen(
+              isNewUser: true,
+              preselected: _registerRole,
+            ),
+          ),
+        );
         return;
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _navigateByRole({
+    required bool isNewUser,
+    UserRole? selectedRole,
+  }) async {
+    // Load profile — sets userProvider state synchronously from local cache,
+    // then refreshes role from Firestore in the background.
+    await ref.read(userProvider.notifier).loadFromStore();
+    if (!mounted) return;
+
+    final profile = ref.read(userProvider);
+
+    // No profile found anywhere → first time or data missing → pick a role.
+    if (profile == null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (_) => RoleSelectionScreen(
+                isNewUser: isNewUser, preselected: selectedRole)),
+      );
+      return;
+    }
+
+    final role = profile.role;
+
+    // Warn if the login-screen role pill doesn't match the actual account role.
+    if (selectedRole != null && selectedRole != role) {
+      final label = role == UserRole.attendant ? 'Guardian' : 'Patient';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'This account is registered as $label. Redirecting to the $label portal.'),
+          backgroundColor: AppColors.warning,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
+    if (role == UserRole.attendant) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AttendantMainScreen()),
+        (_) => false,
+      );
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MainNavScreen()),
+        (_) => false,
+      );
     }
   }
 
@@ -171,20 +249,14 @@ class _AuthScreenState extends State<AuthScreen>
         await result.user?.updateDisplayName(
             result.additionalUserInfo?.profile?['name'] as String? ?? '');
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, AppRouter.setupProfile);
-      } else {
-        final email = result.user?.email ?? '';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Signed in as $email'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(milliseconds: 1500),
-          ),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (_) => const RoleSelectionScreen(isNewUser: true)),
         );
-        await Future.delayed(const Duration(milliseconds: 1500));
+      } else {
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+        await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
@@ -198,22 +270,9 @@ class _AuthScreenState extends State<AuthScreen>
   Future<void> _appleSignIn() async {
     setState(() => _loading = true);
     try {
-      final result = await AuthService.signInWithApple();
+      await AuthService.signInWithApple();
       if (!mounted) return;
-      final email = result.user?.email ?? '';
-      if (email.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Signed in as $email'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(milliseconds: 1800),
-          ),
-        );
-        await Future.delayed(const Duration(milliseconds: 1800));
-        if (!mounted) return;
-      }
-      Navigator.pushReplacementNamed(context, AppRouter.dashboard);
+      await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
       if (mounted) setState(() => _loading = false);
@@ -260,9 +319,21 @@ class _AuthScreenState extends State<AuthScreen>
                 ],
               ),
               const SizedBox(height: 32),
-              // Toggle pill
+              // Login / Register toggle pill
               _TogglePill(isLogin: _isLogin, onToggle: _toggle),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              // Role selector — visible on both login and register tabs
+              _RoleToggle(
+                selected: _isLogin ? _loginRole : _registerRole,
+                onSelect: (r) => setState(() {
+                  if (_isLogin) {
+                    _loginRole = r;
+                  } else {
+                    _registerRole = r;
+                  }
+                }),
+              ),
+              const SizedBox(height: 20),
               // Form
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
@@ -744,6 +815,104 @@ class _GoogleG extends StatelessWidget {
             fontWeight: FontWeight.w700,
             color: Color(0xFF4285F4),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Role toggle (shown on login tab) ────────────────────────────────────────
+
+class _RoleToggle extends StatelessWidget {
+  final UserRole selected;
+  final ValueChanged<UserRole> onSelect;
+
+  const _RoleToggle({required this.selected, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Login as',
+          style: AppTextStyles.caption.copyWith(
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _RoleChip(
+                label: 'Patient',
+                icon: Icons.favorite_rounded,
+                active: selected == UserRole.patient,
+                color: AppColors.primary,
+                onTap: () => onSelect(UserRole.patient),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _RoleChip(
+                label: 'Guardian',
+                icon: Icons.medical_services_rounded,
+                active: selected == UserRole.attendant,
+                color: AppColors.success,
+                onTap: () => onSelect(UserRole.attendant),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _RoleChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool active;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _RoleChip({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.1) : AppColors.bgWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? color : AppColors.divider,
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: active ? color : AppColors.accentTint, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: AppTextStyles.body.copyWith(
+                color: active ? color : AppColors.textSecondary,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
         ),
       ),
     );

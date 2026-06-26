@@ -8,7 +8,7 @@ import '../../router/app_router.dart';
 import '../../services/firestore_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../attendant/attendant_home_screen.dart';
+import '../attendant/attendant_main_screen.dart';
 import '../emergency/emergency_popup.dart';
 
 // ── Theme mode helpers ─────────────────────────────────────────────────────
@@ -148,21 +148,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ]),
             const SizedBox(height: 16),
-            // Section 2 — Attendants
-            const _SectionHeader('Attendants'),
+            // Section 2 — Guardians
+            const _SectionHeader('Guardians'),
             _SettingsCard(key: const ValueKey('card-attendants'), children: [
               ListTile(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                title: Text('Manage Attendants', style: AppTextStyles.body),
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.medical_services_rounded,
+                      color: AppColors.success, size: 18),
+                ),
+                title: Text('Manage Guardians', style: AppTextStyles.body),
                 subtitle: Text(
-                  'Attendants are notified during emergencies.',
+                  'Guardians are linked via QR code and receive emergency alerts.',
                   style: AppTextStyles.caption,
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded,
                     color: AppColors.textSecondary),
                 onTap: () => Navigator.pushNamed(
                     context, AppRouter.settingsAttendants),
+              ),
+              const Divider(height: 1, color: AppColors.divider),
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.qr_code_rounded,
+                      color: AppColors.primary, size: 18),
+                ),
+                title: Text('My QR Code', style: AppTextStyles.body),
+                subtitle: Text(
+                  'Show your QR code for a guardian to scan and link.',
+                  style: AppTextStyles.caption,
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary),
+                onTap: () => Navigator.pushNamed(context, AppRouter.patientQr),
               ),
             ]),
             const SizedBox(height: 16),
@@ -332,12 +365,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (profile == null) return;
     final updated = profile.copyWith(role: newRole);
     ref.read(userProvider.notifier).updateProfile(updated);
+
+    final roleStr = newRole == UserRole.attendant ? 'attendant' : 'patient';
+    // Save as top-level Firestore field so login always reads the right role
+    FirestoreService.saveRole(roleStr).catchError((_) {});
     FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
 
     if (!mounted) return;
     if (newRole == UserRole.attendant) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AttendantHomeScreen()),
+        MaterialPageRoute(builder: (_) => const AttendantMainScreen()),
         (_) => false,
       );
     } else {
@@ -458,13 +495,13 @@ class _AccountCard extends ConsumerWidget {
             ),
             title: Text('Current Role', style: AppTextStyles.body),
             subtitle: Text(
-              isAttendant ? 'Attendant' : 'Patient',
+              isAttendant ? 'Guardian' : 'Patient',
               style: AppTextStyles.caption,
             ),
             trailing: TextButton(
               onPressed: () => _confirmSwitch(context, isAttendant),
               child: Text(
-                isAttendant ? 'Switch to Patient' : 'Switch to Attendant',
+                isAttendant ? 'Switch to Patient' : 'Switch to Guardian',
                 style: AppTextStyles.caption
                     .copyWith(color: AppColors.primary),
               ),
@@ -478,16 +515,15 @@ class _AccountCard extends ConsumerWidget {
   void _confirmSwitch(BuildContext context, bool currentlyAttendant) {
     final newRole =
         currentlyAttendant ? UserRole.patient : UserRole.attendant;
-    final label = currentlyAttendant ? 'Patient' : 'Attendant';
+    final label = currentlyAttendant ? 'Patient' : 'Guardian';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Switch to $label?',
-            style: AppTextStyles.h2),
+        title: Text('Switch to $label?', style: AppTextStyles.h2),
         content: Text(
           currentlyAttendant
               ? 'You will return to the patient monitoring view.'
-              : 'You will be taken to the Attendant dashboard where you can monitor a linked patient.',
+              : 'You will be taken to the Guardian portal where you can monitor a linked patient.',
           style: AppTextStyles.body,
         ),
         actions: [

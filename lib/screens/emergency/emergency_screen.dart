@@ -118,7 +118,7 @@ class EmergencyScreen extends StatelessWidget {
                 children: [
                   _ActionRow(
                     icon: Icons.message_rounded,
-                    label: 'SMS opened for emergency contact',
+                    label: 'SMS sent to guardian',
                     done: true,
                   ),
                   _ActionRow(

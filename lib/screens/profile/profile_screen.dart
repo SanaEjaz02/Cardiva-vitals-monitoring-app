@@ -18,6 +18,7 @@ import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
+import '../../services/link_service.dart';
 import 'feedback_sheet.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -90,8 +91,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? get _user => AuthService.currentUser;
   String? _photoPath;
-  int _contactCount = 0;
-  int _attendantCount = 0;
+  int _guardianCount = 0;
   String? _connectedDeviceName;
 
   String get _displayName => _user?.displayName ?? 'Patient';
@@ -131,31 +131,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       setState(() => _photoPath = path);
     }
 
-    // Emergency contacts count
-    final ecRaw = prefs.getString('emergency_contacts_${uid}_v1');
-    int ecCount = 0;
-    if (ecRaw != null) {
-      try {
-        ecCount = (jsonDecode(ecRaw) as List).length;
-      } catch (_) {}
-    }
-
-    // Attendant count
-    final attRaw = prefs.getString('attendants_${uid}_v1');
-    int attCount = 0;
-    if (attRaw != null) {
-      try {
-        attCount = (jsonDecode(attRaw) as List).length;
-      } catch (_) {}
-    }
+    // Guardian count — use linkedGuardiansStream as the single source of truth.
+    // It resolves both manual (email-looked-up) and QR-linked guardians without
+    // double-counting, since email auto-link writes into linked_guardians too.
+    int guardianCount = 0;
+    try {
+      final linked = await LinkService.linkedGuardiansStream(uid)
+          .first
+          .timeout(const Duration(seconds: 4));
+      guardianCount = linked.length;
+    } catch (_) {}
 
     // Connected BLE device name
     final deviceName = prefs.getString('ble_device_name');
 
     if (mounted) {
       setState(() {
-        _contactCount = ecCount;
-        _attendantCount = attCount;
+        _guardianCount = guardianCount;
         _connectedDeviceName = deviceName;
       });
     }
@@ -538,20 +530,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               _GroupCard(
                 children: [
                   _ProfileRow(
-                    icon: Icons.contacts_rounded,
-                    label: 'Emergency Contacts',
-                    badge: PillWidget('$_contactCount',
-                        variant: PillVariant.primary),
-                    onTap: () async {
-                      await Navigator.pushNamed(
-                          context, AppRouter.emergencyContacts);
-                      if (mounted) _loadData();
-                    },
-                  ),
-                  _ProfileRow(
                     icon: Icons.people_rounded,
-                    label: 'Attendants',
-                    badge: PillWidget('$_attendantCount',
+                    label: 'Guardians',
+                    badge: PillWidget('$_guardianCount',
                         variant: PillVariant.primary),
                     onTap: () async {
                       await Navigator.pushNamed(

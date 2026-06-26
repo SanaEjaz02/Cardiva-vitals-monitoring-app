@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  patients/{uid}
+    //    - Patient owns and fully controls their document & subcollections.
+    //    - A guardian can read a patient's doc once they are linked
+    //      (their UID appears in linked_guardians).
+    //    - Any signed-in user may update ONLY the linked_guardians field —
+    //      this is how QR-scanning guardians add/remove themselves.
+    // ══════════════════════════════════════════════════════════════════════
+    match /patients/{uid} {
+      allow read:   if isOwner(uid) || isLinkedGuardianOf();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || onlyLinkedGuardiansChanged();
+      allow delete: if isOwner(uid);
+
+      // analysis_history — patient only
+      match /analysis_history/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // health_reports — patient only
+      match /health_reports/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  guardians/{uid}
+    //    - Guardian owns their document.
+    //    - Any signed-in user can READ guardian profile
+    //      (patients fetch guardian name for the chat list).
+    //    - Any signed-in user may update ONLY the linked_patients field —
+    //      symmetric with the patient-side rule above.
+    // ══════════════════════════════════════════════════════════════════════
+    match /guardians/{uid} {
+      allow read:   if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || onlyLinkedPatientsChanged();
+      allow delete: if isOwner(uid);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  chats/{chatId}   chatId = sorted([patientUid, guardianUid]).join('_')
+    //    - Only the two participants (stored in the participants[] array)
+    //      can read or write the chat document and its messages.
+    //    - A new chat doc can be created by whoever is in the new
+    //      participants list.
+    //    - Messages: sender must set senderId == their own uid.
+    // ══════════════════════════════════════════════════════════════════════
+    match /chats/{chatId} {
+      allow read, update: if isSignedIn() && isParticipant();
+      allow create:       if isSignedIn() && isParticipantInNew();
+      allow delete:       if false;
+
+      match /messages/{msgId} {
+        // Read/update: participant in the chat, OR chat doc doesn't exist yet
+        // (stream opens before the first message is sent — no doc to check against)
+        allow read, update: if isSignedIn() && isChatParticipantOrNew(chatId);
+        // Create: chat doc is written first (see ChatService), so get() works here
+        allow create:       if isSignedIn()
+                               && isChatParticipant(chatId)
+                               && request.resource.data.senderId == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  vitals_latest/{patientUid}
+    //    - Only the patient writes their own latest vitals snapshot.
+    //    - Any signed-in user can read it (guardian dashboard live feed).
+    // ══════════════════════════════════════════════════════════════════════
+    match /vitals_latest/{patientUid} {
+      allow write: if isOwner(patientUid);
+      allow read:  if isSignedIn();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  feedback
+    //    - Any signed-in user can submit feedback (create only).
+    // ══════════════════════════════════════════════════════════════════════
+    match /feedback/{docId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Helper functions
+    // ══════════════════════════════════════════════════════════════════════
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // True when the calling user's UID is in the existing doc's
+    // linked_guardians array (read access for guardian dashboard).
+    function isLinkedGuardianOf() {
+      return isSignedIn()
+          && 'linked_guardians' in resource.data
+          && request.auth.uid in resource.data.linked_guardians;
+    }
+
+    // True when the update touches ONLY the linked_guardians field
+    // (allows any guardian to add/remove themselves via QR scan).
+    function onlyLinkedGuardiansChanged() {
+      return isSignedIn()
+          && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['linked_guardians']);
+    }
+
+    // Symmetric: allows updating ONLY the linked_patients field on
+    // a guardian document.
+    function onlyLinkedPatientsChanged() {
+      return isSignedIn()
+          && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['linked_patients']);
+    }
+
+    // Chat participant check on existing chat doc.
+    function isParticipant() {
+      return request.auth.uid in resource.data.participants;
+    }
+
+    // Chat participant check when creating a new chat doc.
+    function isParticipantInNew() {
+      return request.auth.uid in request.resource.data.participants;
+    }
+
+    // Participant check via parent chat doc (used from messages subcollection).
+    function isChatParticipant(chatId) {
+      return request.auth.uid in
+        get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // Same as isChatParticipant but also passes when the chat doc doesn't
+    // exist yet — needed so the messages stream doesn't error before the
+    // first message is sent (chat doc is created on first sendMessage call).
+    function isChatParticipantOrNew(chatId) {
+      return !exists(/databases/$(database)/documents/chats/$(chatId)) ||
+        request.auth.uid in
+          get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+  }
+}

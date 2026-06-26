@@ -63,7 +63,7 @@ class _AlertSentScreenState extends State<AlertSentScreen>
         final phone = (j['phone'] as String? ?? '').trim();
         if (notifySms && phone.isNotEmpty) {
           contacts.add(_NotifiedContact(
-            name: j['name'] as String? ?? 'Attendant',
+            name: j['name'] as String? ?? 'Guardian',
             phone: phone,
           ));
         }
@@ -116,8 +116,8 @@ class _AlertSentScreenState extends State<AlertSentScreen>
               const SizedBox(height: 8),
               Text(
                 _contacts.isEmpty
-                    ? 'No emergency contacts were notified. Add contacts in Settings.'
-                    : 'Your emergency contacts and attendants have been notified.',
+                    ? 'No guardians were notified. Add guardians in Settings.'
+                    : 'Your guardians have been notified.',
                 style: AppTextStyles.body
                     .copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
@@ -138,7 +138,7 @@ class _AlertSentScreenState extends State<AlertSentScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Add emergency contacts in Profile → Emergency Contacts',
+                          'Add guardians in Profile → Guardians',
                           style: AppTextStyles.caption,
                         ),
                       ),

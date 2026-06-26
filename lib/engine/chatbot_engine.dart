@@ -43,14 +43,14 @@ class ChatbotEngine {
     if (input.contains('fall')) {
       return 'Fall Detection uses the wearable\'s accelerometer to detect sudden impacts. '
           'When a fall is detected, CARDIVA immediately triggers an emergency response — '
-          'sending your GPS location via SMS to you and your emergency contact — '
+          'sending your GPS location via SMS to you and your guardian — '
           'regardless of your other vital readings or confidence score.';
     }
 
     if (input.contains('emergency')) {
       return 'When an emergency is triggered, CARDIVA: '
           '1) Gets your GPS location, '
-          '2) Sends an SMS alert to you and your emergency contact with vitals and a maps link, '
+          '2) Sends an SMS alert to you and your guardian with vitals and a maps link, '
           '3) Logs the event to the cloud, '
           '4) Shows an in-app emergency notification. '
           'You can mark it as a false alarm from the Emergency screen.';

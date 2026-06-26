@@ -4,3 +4,8 @@ import 'package:flutter/material.dart';
 /// into the correct screen when the user taps a system notification,
 /// even when the app is in the background.
 final appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Tab-switch request notifier — EmergencyPopup (or any non-Riverpod widget)
+/// sets a tab index here; MainNavScreen listens and switches to that tab.
+/// Reset to null after handling.
+final mainNavTabNotifier = ValueNotifier<int?>(null);
