@@ -59,50 +59,59 @@ class _EmergencyContactSetupScreenState
 
   Future<void> _finish() async {
     setState(() => _saving = true);
-    try {
-      if (_nameCtrl.text.isNotEmpty && _phoneCtrl.text.isNotEmpty) {
-        _addContact();
+    // Auto-add whatever is still in the text fields
+    if (_nameCtrl.text.isNotEmpty && _phoneCtrl.text.isNotEmpty) {
+      _addContact();
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    if (_contacts.isNotEmpty) {
+      final jsonList = _contacts.map((c) => {
+        'id': c.id,
+        'name': c.name,
+        'phone': c.phone,
+        'email': c.email,
+        'relationship': c.relation,
+      }).toList();
+
+      // Local cache first — fast, never fails.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('manual_guardians_${uid}_v1', jsonEncode(jsonList));
+
+      // Firestore: fire-and-forget so a slow network never blocks navigation.
+      FirestoreService.saveManualGuardians(jsonList).catchError((e) {
+        debugPrint('[EmergencySetup] saveManualGuardians failed: $e');
+      });
+
+      // Immediately write guardian_snapshot and try to resolve UIDs so the
+      // chat screen doesn't show "pending" for guardians who are already
+      // registered. The real-time patientSnapshotStream updates the UI
+      // automatically once this write lands in Firestore.
+      final guardianList = jsonList.map((g) => <String, dynamic>{
+        'id':    g['id']    ?? '',
+        'name':  g['name']  ?? '',
+        'email': (g['email'] ?? '').trim().toLowerCase(),
+        'phone': g['phone'] ?? '',
+        'uid':   '',
+      }).toList();
+      LinkService.saveGuardiansSnapshot(
+        patientUid: uid,
+        guardians:  guardianList,
+      ).catchError((_) {});
+
+      // Auto-link guardians already registered with matching emails.
+      final emails = _contacts
+          .map((c) => c.email.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (emails.isNotEmpty) {
+        LinkService.autoLinkByEmails(
+          patientUid: uid,
+          guardianEmails: emails,
+        ).catchError((_) {});
       }
-      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
-      if (_contacts.isNotEmpty) {
-        final jsonList = _contacts.map((c) => {
-          'id': c.id,
-          'name': c.name,
-          'phone': c.phone,
-          'email': c.email,
-          'relationship': c.relation,
-        }).toList();
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-            'manual_guardians_${uid}_v1', jsonEncode(jsonList));
-        // Awaited so we know if it fails; rethrows on error
-        await FirestoreService.saveManualGuardians(jsonList);
-        // Auto-link any guardians who are already registered with matching emails
-        final emails = _contacts
-            .map((c) => c.email.trim())
-            .where((e) => e.isNotEmpty)
-            .toList();
-        if (emails.isNotEmpty) {
-          LinkService.autoLinkByEmails(
-            patientUid: uid,
-            guardianEmails: emails,
-          ).catchError((_) {});
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save contacts: $e')),
-      );
-      setState(() => _saving = false);
-      return;
     }
     if (!mounted) return;
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      AppRouter.dashboard,
-      (_) => false,
-    );
+    Navigator.pushNamedAndRemoveUntil(context, AppRouter.dashboard, (_) => false);
   }
 
   @override

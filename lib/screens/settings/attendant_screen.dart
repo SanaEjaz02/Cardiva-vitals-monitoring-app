@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/attendant.dart';
+import '../../services/chat_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/link_service.dart';
 import '../../theme/app_colors.dart';
@@ -69,8 +71,24 @@ class _AttendantScreenState extends State<AttendantScreen> {
       await FirestoreService.saveAttendants(
           _attendants.map((a) => a.toJson()).toList());
     } catch (_) {}
-    // Auto-link any guardians who are already registered with matching emails
     if (uid != null) {
+      // Write guardians to guardian_snapshot on the patient doc and push to
+      // email-based feeds so the guardian dashboard sees the patient immediately.
+      final snapshotGuardians = _attendants
+          .map((a) => <String, dynamic>{
+                'id': a.id,
+                'name': a.name,
+                'email': (a.email ?? '').trim().toLowerCase(),
+                'phone': a.phone,
+                'uid': '',
+              })
+          .toList();
+      LinkService.saveGuardiansSnapshot(
+        patientUid: uid,
+        guardians: snapshotGuardians,
+        patientName: FirebaseAuth.instance.currentUser?.displayName ?? '',
+      );
+      // Also try email-based UID resolution in the background (needs deployed rules)
       final emails = _attendants
           .map((a) => (a.email ?? '').trim())
           .where((e) => e.isNotEmpty)
@@ -194,8 +212,10 @@ class _AttendantScreenState extends State<AttendantScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
+              final att = _attendants[index];
               setState(() => _attendants.removeAt(index));
               _save();
+              _unlinkFromFirebase(att);
             },
             child: Text('Remove',
                 style: AppTextStyles.body.copyWith(color: AppColors.danger)),
@@ -203,6 +223,30 @@ class _AttendantScreenState extends State<AttendantScreen> {
         ],
       ),
     );
+  }
+
+  /// Removes the guardian from linked_guardians/linked_patients AND deletes
+  /// their chat conversation (messages + chat doc).
+  Future<void> _unlinkFromFirebase(Attendant att) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final email = (att.email ?? '').trim();
+    if (email.isEmpty) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final qs = await Future.wait([
+        db.collection('guardians').where('email', isEqualTo: email).get(),
+        db.collection('guardians').where('profile.email', isEqualTo: email).get(),
+      ]);
+      final seen = <String>{};
+      final allDocs = [...qs[0].docs, ...qs[1].docs]
+          .where((d) => seen.add(d.id))
+          .toList();
+      for (final doc in allDocs) {
+        await LinkService.unlink(patientUid: uid, attendantUid: doc.id);
+        ChatService.deleteChat(uid, doc.id).catchError((_) {});
+      }
+    } catch (_) {}
   }
 }
 

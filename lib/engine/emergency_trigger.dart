@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/alert_class.dart';
 import '../models/chat_message.dart';
 import '../models/health_event.dart';
@@ -7,6 +8,7 @@ import '../services/cloud_service.dart';
 import '../services/link_service.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
+import '../services/realtime_database_service.dart';
 
 class EmergencyTrigger {
   EmergencyTrigger._();
@@ -53,8 +55,9 @@ class EmergencyTrigger {
         '• RR: ${r.respirationRate.toStringAsFixed(1)} br/min\n\n'
         '📍 $mapsLink';
 
-    // Step 3: Send in-app Cardiva chat message to all linked guardians —
-    // rate-limited to once per 5 minutes to prevent flooding.
+    // Step 3: Send in-app Cardiva chat message to all linked guardians AND
+    // store the full contact list (including manual phone-only guardians) for
+    // the alert record. Rate-limited to once per 5 minutes.
     final now = DateTime.now();
     final canSend = _lastAlertSentAt == null ||
         now.difference(_lastAlertSentAt!) >= _alertCooldown;
@@ -63,9 +66,40 @@ class EmergencyTrigger {
       _lastAlertSentAt = now;
       final uid = FirebaseAuth.instance.currentUser?.uid ?? userId;
       try {
-        final guardianUids =
-            await LinkService.linkedAttendantsStream(uid).first;
-        for (final gUid in guardianUids) {
+        // Fetch all guardian contacts (registered + manual phone-only)
+        final contacts = await LinkService.guardianContactDetails(uid);
+
+        final notifType = event.alertClass == AlertClass.vitalsAlert
+            ? 'warning'
+            : 'emergency';
+        final notifTitle = '🚨 CARDIVA ${event.alertClass.label}';
+
+        // Build a short SMS text (no emojis — some carriers strip them).
+        final smsText = 'CARDIVA ALERT\n'
+            'Patient: $userName\n'
+            'Status: ${event.alertClass.label}\n'
+            'HR: ${r.heartRate.toStringAsFixed(0)} BPM  '
+            'SpO2: ${r.spO2.toStringAsFixed(0)}%\n'
+            '$mapsLink';
+
+        for (final c in contacts) {
+          final gUid = (c['uid'] as String? ?? '').trim();
+          final phone = (c['phone'] as String? ?? '').trim();
+
+          // SMS: all contacts with a phone number, registered or not.
+          if (phone.isNotEmpty) {
+            final smsUri = Uri(
+              scheme: 'sms',
+              path: phone,
+              queryParameters: {'body': smsText},
+            );
+            launchUrl(smsUri, mode: LaunchMode.externalApplication)
+                .catchError((_) => false);
+          }
+
+          // In-app chat + RTDB push: only registered (linked) guardians.
+          if (gUid.isEmpty) continue;
+
           ChatService.sendMessage(
             patientUid: uid,
             guardianUid: gUid,
@@ -73,6 +107,13 @@ class EmergencyTrigger {
             senderName: userName,
             text: message,
             type: MessageType.emergency,
+          ).catchError((_) {});
+
+          RealtimeDatabaseService.pushNotificationToUser(
+            targetUid: gUid,
+            title: notifTitle,
+            body: message,
+            type: notifType,
           ).catchError((_) {});
         }
       } catch (_) {}

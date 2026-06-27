@@ -10,7 +10,6 @@ import 'attendant_dashboard_tab.dart';
 import 'attendant_chat_list_tab.dart';
 import 'attendant_alert_history_tab.dart';
 import 'attendant_profile_tab.dart';
-import 'scan_qr_screen.dart';
 
 final _guardianChatUnreadProvider = StreamProvider.autoDispose<int>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -163,44 +162,7 @@ class _AttendantMainScreenState extends ConsumerState<AttendantMainScreen> {
                   ),
                 ],
               ),
-              actions: [
-                // Scan QR button
-                Tooltip(
-                  message: 'Scan patient QR to link',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const ScanQrScreen()),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.qr_code_scanner_rounded,
-                              color: Colors.white, size: 16),
-                          SizedBox(width: 6),
-                          Text('Scan QR',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              actions: const [],
             ),
       body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: _AttendantBottomNav(

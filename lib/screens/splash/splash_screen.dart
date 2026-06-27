@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
+import '../../services/account_switcher_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/session_service.dart';
 import '../../theme/app_colors.dart';
@@ -124,16 +125,29 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _resolveStartupRoute() async {
     bool isSignedIn = false;
-    await Future.wait([
-      Future.delayed(const Duration(milliseconds: 500)),
-      AuthService.checkSession().then((v) => isSignedIn = v),
-    ]);
+    isSignedIn = await AuthService.checkSession();
     if (!mounted) return;
 
     if (isSignedIn) {
       await ref.read(userProvider.notifier).loadFromStore();
       if (!mounted) return;
-      final role = ref.read(userProvider)?.role ?? UserRole.patient;
+      // Role is already in the provider after loadFromStore() (read from local
+      // cache or Firestore). No second round-trip needed.
+      final profile = ref.read(userProvider);
+      final role = profile?.role ?? UserRole.patient;
+      // Persist this account to the on-device switcher list (fire-and-forget).
+      final fbUser = AuthService.currentUser;
+      if (profile != null && fbUser != null) {
+        AccountSwitcherService.upsertAccount(SavedAccount(
+          uid: fbUser.uid,
+          email: fbUser.email ?? '',
+          name: profile.name.isNotEmpty
+              ? profile.name
+              : (fbUser.displayName ?? ''),
+          role: role == UserRole.attendant ? 'attendant' : 'patient',
+        )).catchError((_) {});
+      }
+
       _fadeNavigate(role == UserRole.attendant
           ? const AttendantMainScreen()
           : const MainNavScreen());

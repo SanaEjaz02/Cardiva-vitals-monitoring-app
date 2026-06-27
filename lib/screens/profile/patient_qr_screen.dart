@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../widgets/account_switcher_sheet.dart';
 
 class PatientQrScreen extends ConsumerWidget {
   const PatientQrScreen({super.key});
@@ -137,7 +138,56 @@ class PatientQrScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
+              // ── Switch Account ─────────────────────────────────────
+              GestureDetector(
+                onTap: () => showAccountSwitcherSheet(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: AppColors.shadowSm,
+                          blurRadius: 8,
+                          offset: Offset(0, 2))
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryBg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.swap_horiz_rounded,
+                            color: AppColors.primary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Switch Account',
+                                style: AppTextStyles.body.copyWith(
+                                    fontWeight: FontWeight.w600)),
+                            Text('Sign in with a different Cardiva ID',
+                                style: AppTextStyles.caption),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded,
+                          size: 14, color: AppColors.accentTint),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

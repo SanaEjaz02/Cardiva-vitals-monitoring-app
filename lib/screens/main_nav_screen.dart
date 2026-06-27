@@ -47,7 +47,6 @@ class _MainNavScreenState extends ConsumerState<MainNavScreen> {
       await Future.wait([
         ref.read(userProvider.notifier).loadFromStore(),
         ref.read(analysisHistoryProvider.notifier).ensureLoadedForCurrentUser(),
-        ref.read(emergencyContactsProvider.notifier).loadFromStore(),
       ]);
     });
   }

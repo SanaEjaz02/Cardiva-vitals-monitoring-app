@@ -12,8 +12,10 @@ class UserProfile {
   final double weightKg;
   final String? photoUrl;
   final UserRole role;
-  // For attendants: the patient UID they are monitoring
   final String? monitoredPatientId;
+  // Band ID entered during signup — links this user to a specific physical band.
+  // Only relevant for patients; null for attendants.
+  final String? bandId;
 
   const UserProfile({
     required this.id,
@@ -28,6 +30,7 @@ class UserProfile {
     this.photoUrl,
     this.role = UserRole.patient,
     this.monitoredPatientId,
+    this.bandId,
   });
 
   // Computed
@@ -48,7 +51,9 @@ class UserProfile {
         name: json['name'] as String,
         email: json['email'] as String,
         phone: json['phone'] as String? ?? '',
-        dateOfBirth: DateTime.parse(json['date_of_birth'] as String),
+        dateOfBirth: json['date_of_birth'] != null
+            ? DateTime.parse(json['date_of_birth'] as String)
+            : DateTime(1990),
         gender: json['gender'] as String? ?? '',
         bloodGroup: json['blood_group'] as String? ?? '',
         heightCm: (json['height_cm'] as num?)?.toDouble() ?? 170.0,
@@ -56,6 +61,7 @@ class UserProfile {
         photoUrl: json['photo_url'] as String?,
         role: json['role'] == 'attendant' ? UserRole.attendant : UserRole.patient,
         monitoredPatientId: json['monitored_patient_id'] as String?,
+        bandId: json['band_id'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -72,6 +78,7 @@ class UserProfile {
         'role': role == UserRole.attendant ? 'attendant' : 'patient',
         if (monitoredPatientId != null)
           'monitored_patient_id': monitoredPatientId,
+        if (bandId != null) 'band_id': bandId,
       };
 
   UserProfile copyWith({
@@ -87,6 +94,8 @@ class UserProfile {
     UserRole? role,
     String? monitoredPatientId,
     bool clearMonitoredPatientId = false,
+    String? bandId,
+    bool clearBandId = false,
   }) =>
       UserProfile(
         id: id,
@@ -103,5 +112,6 @@ class UserProfile {
         monitoredPatientId: clearMonitoredPatientId
             ? null
             : (monitoredPatientId ?? this.monitoredPatientId),
+        bandId: clearBandId ? null : (bandId ?? this.bandId),
       );
 }

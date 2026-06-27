@@ -13,7 +13,7 @@ void main() async {
   await Firebase.initializeApp();
 
   await NotificationService.initialize();
-  await BackgroundService.initialize();
+  BackgroundService.initialize();
 
   runApp(
     const ProviderScope(child: CardivApp()),

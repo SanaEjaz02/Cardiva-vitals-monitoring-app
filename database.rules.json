@@ -1,0 +1,89 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "linked_guardians": {
+          "$guardianUid": {
+            ".write": "auth != null && auth.uid == $guardianUid"
+          }
+        },
+        "linked_patients": {
+          "$patientUid": {
+            ".write": "auth != null && auth.uid == $patientUid"
+          }
+        }
+      }
+    },
+
+    "bands": {
+      "$bandId": {
+        ".read":  "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('owner_uid').val() == auth.uid)"
+      }
+    },
+
+    "vitals": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "guardian_feeds": {
+      "$guardianUid": {
+        ".read": "auth != null && auth.uid == $guardianUid",
+        "$patientUid": {
+          ".write": "auth != null && auth.uid == $patientUid"
+        }
+      }
+    },
+
+    "chat_sessions": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "notifications": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "guardian_patients": {
+      "$guardianUid": {
+        ".read":  "auth != null && auth.uid == $guardianUid",
+        "$patientUid": {
+          ".write": "auth != null && (auth.uid == $patientUid || auth.uid == $guardianUid)"
+        }
+      }
+    },
+
+    "presence": {
+      "$uid": {
+        ".read":  "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "email_index": {
+      "$key": {
+        ".read":  "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "guardian_requests": {
+      "$guardianEmailKey": {
+        ".read": "auth != null",
+        "$patientUid": {
+          ".write": "auth != null && auth.uid == $patientUid"
+        }
+      }
+    }
+  }
+}

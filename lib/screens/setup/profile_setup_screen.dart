@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/step_indicator.dart';
@@ -58,40 +59,35 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         id: uid,
         name: name,
         email: firebaseUser?.email ?? '',
-        phone: isGuardian ? _phoneCtrl.text.trim() : '',
+        phone: _phoneCtrl.text.trim(),
         dateOfBirth: isGuardian ? DateTime(1990) : _dob!,
-        gender: isGuardian ? 'Other' : (_gender ?? 'Other'),
-        bloodGroup: isGuardian ? 'A+' : (_bloodType ?? 'A+'),
-        heightCm: isGuardian ? 170.0 : (double.tryParse(_heightCtrl.text) ?? 170.0),
-        weightKg: isGuardian ? 70.0 : (double.tryParse(_weightCtrl.text) ?? 70.0),
+        gender: isGuardian ? '' : (_gender ?? ''),
+        bloodGroup: isGuardian ? '' : (_bloodType ?? ''),
+        heightCm: isGuardian ? 0 : (double.tryParse(_heightCtrl.text) ?? 170.0),
+        weightKg: isGuardian ? 0 : (double.tryParse(_weightCtrl.text) ?? 70.0),
         role: existingRole,
       );
-      // Update Firebase display name
+      // Display name — fire-and-forget, no reason to block navigation.
       if (firebaseUser?.displayName != name) {
-        await firebaseUser?.updateDisplayName(name);
+        firebaseUser?.updateDisplayName(name).catchError((_) {});
       }
-      // Save to Riverpod state
+
+      // In-memory state — instant.
       ref.read(userProvider.notifier).setUser(profile);
-      // Save locally first (instant)
+
+      // Local cache — fast, ensures offline re-open works.
       final profileJson = profile.toJson();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
-      // Await Firestore save — retries once if the first attempt fails
-      try {
-        await FirestoreService.saveProfile(profileJson);
-      } catch (_) {
-        await Future.delayed(const Duration(seconds: 2));
-        try {
-          await FirestoreService.saveProfile(profileJson);
-        } catch (e) {
-          debugPrint('[ProfileSetup] Firestore saveProfile failed after retry: $e');
-        }
-      }
+
+      // RTDB — primary fast store (push-based, no round-trip).
+      RealtimeDatabaseService.saveUserProfile(profileJson).catchError((_) {});
+      // Firestore — needed for email-based guardian lookups and emergency SMS.
+      // Fire-and-forget: does NOT block navigation.
+      FirestoreService.saveProfile(profileJson).catchError((_) {});
 
       if (!mounted) return;
-      setState(() => _saving = false);
 
-      // Guardians skip the device-pair and contact setup steps
       if (existingRole == UserRole.attendant) {
         Navigator.pushAndRemoveUntil(
           context,
@@ -100,10 +96,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         );
         return;
       }
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() => _saving = false);
-    Navigator.pushNamed(context, AppRouter.setupPair);
+      Navigator.pushNamed(context, AppRouter.setupPair);
+    } catch (e) {
+      debugPrint('[ProfileSetup] _submit error: $e');
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _pickDob() async {

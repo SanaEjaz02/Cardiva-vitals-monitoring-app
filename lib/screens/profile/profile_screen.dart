@@ -13,14 +13,16 @@ import '../../models/user_profile.dart';
 import '../../providers/analysis_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
-import '../../services/link_service.dart';
+
 import 'feedback_sheet.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../widgets/account_switcher_sheet.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -67,6 +69,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
           if (updated != null) {
             notifier.updateProfile(updated);
             FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+            RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
             final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await p.setString('user_profile_$uid', jsonEncode(updated.toJson()));
             if (path != null) {
@@ -76,6 +79,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
                   notifier.updateProfile(withPhoto);
                   FirestoreService.saveProfile(withPhoto.toJson())
                       .catchError((_) {});
+                  RealtimeDatabaseService.saveUserProfile(withPhoto.toJson()).catchError((_) {});
                   p.setString(
                       'user_profile_$uid', jsonEncode(withPhoto.toJson()));
                 }
@@ -91,7 +95,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? get _user => AuthService.currentUser;
   String? _photoPath;
-  int _guardianCount = 0;
+  List<Map<String, dynamic>> _guardians = [];
   String? _connectedDeviceName;
 
   String get _displayName => _user?.displayName ?? 'Patient';
@@ -131,15 +135,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       setState(() => _photoPath = path);
     }
 
-    // Guardian count — use linkedGuardiansStream as the single source of truth.
-    // It resolves both manual (email-looked-up) and QR-linked guardians without
-    // double-counting, since email auto-link writes into linked_guardians too.
-    int guardianCount = 0;
+    // Guardians — load directly from manual_guardians (what the patient saved)
+    List<Map<String, dynamic>> guardians = [];
     try {
-      final linked = await LinkService.linkedGuardiansStream(uid)
-          .first
-          .timeout(const Duration(seconds: 4));
-      guardianCount = linked.length;
+      final manuals = await FirestoreService.loadManualGuardians();
+      if (manuals != null) {
+        guardians = manuals
+            .map((g) => {'name': (g['name'] as String?) ?? 'Guardian'})
+            .toList();
+      }
     } catch (_) {}
 
     // Connected BLE device name
@@ -147,7 +151,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     if (mounted) {
       setState(() {
-        _guardianCount = guardianCount;
+        _guardians = guardians;
         _connectedDeviceName = deviceName;
       });
     }
@@ -266,13 +270,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
 
-    // Step 1 (0–50%): delete Firestore data + clear local cache in parallel
-    // Timeout guards against Firestore connection drops (UNAVAILABLE errors)
+    // Step 1 (0–50%): delete Firestore + RTDB data + local cache in parallel.
     statusMsg.value = 'Deleting your health data...';
     await Future.wait([
       FirestoreService.deleteAccount()
           .timeout(const Duration(seconds: 8))
           .catchError((_) => null),
+      RealtimeDatabaseService.deleteUserData()
+          .timeout(const Duration(seconds: 8))
+          .catchError((_) {}),
       SharedPreferences.getInstance()
           .then((p) => p.clear())
           .catchError((_) => false),
@@ -532,7 +538,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _ProfileRow(
                     icon: Icons.people_rounded,
                     label: 'Guardians',
-                    badge: PillWidget('$_guardianCount',
+                    badge: PillWidget('${_guardians.length}',
                         variant: PillVariant.primary),
                     onTap: () async {
                       await Navigator.pushNamed(
@@ -540,6 +546,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       if (mounted) _loadData();
                     },
                   ),
+                  if (_guardians.isNotEmpty)
+                    _GuardianSubList(guardians: _guardians),
                   _ProfileRow(
                     icon: Icons.tune_rounded,
                     label: 'Threshold Settings',
@@ -600,6 +608,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Settings & Privacy',
                     onTap: () =>
                         Navigator.pushNamed(context, AppRouter.settings),
+                  ),
+                  _ProfileRow(
+                    icon: Icons.swap_horiz_rounded,
+                    label: 'Switch Account',
+                    onTap: () => showAccountSwitcherSheet(context),
                   ),
                   _ProfileRow(
                     icon: Icons.logout_rounded,
@@ -1162,6 +1175,65 @@ class _ProfileRow extends StatelessWidget {
             color: AppColors.divider,
           ),
       ],
+    );
+  }
+}
+
+class _GuardianSubList extends StatelessWidget {
+  final List<Map<String, dynamic>> guardians;
+  const _GuardianSubList({required this.guardians});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: guardians.map((g) {
+          final name = (g['name'] as String?) ?? 'Guardian';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: AppColors.primary,
+                  child: Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : 'G',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(name, style: AppTextStyles.body)),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    'Saved',
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }

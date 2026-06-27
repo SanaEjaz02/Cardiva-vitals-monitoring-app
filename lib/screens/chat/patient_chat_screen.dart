@@ -1,17 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/chat_message.dart';
 import '../../providers/user_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/link_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+
+// Helpers shared by tiles
+bool _isPending(Map<String, dynamic> g) => g['is_pending'] == true;
 
 // ── Header color ───────────────────────────────────────────────────────────────
 const _kHeaderColor = AppColors.primaryDeep;
@@ -21,9 +27,54 @@ const _kHeaderColor = AppColors.primaryDeep;
 final _authUidProvider = StreamProvider.autoDispose<String>((ref) =>
     FirebaseAuth.instance.authStateChanges().map((u) => u?.uid ?? ''));
 
+/// Listens to the patient document and builds the guardian list for chat.
+/// Reads guardian_snapshot.linked_guardians (has UIDs once resolved) first;
+/// falls back to manual_guardians so previously-added guardians always appear.
+/// No cross-collection queries — everything is on the patient doc.
 final _linkedGuardiansProvider =
     StreamProvider.family<List<Map<String, dynamic>>, String>(
-        (ref, uid) => LinkService.linkedGuardiansStream(uid));
+        (ref, patientUid) => patientUid.isEmpty
+            ? Stream.value([])
+            : LinkService.patientSnapshotStream(patientUid).map((data) {
+                if (data == null) return [];
+
+                // Primary: guardian_snapshot has pre-resolved UIDs
+                final snap = data['guardian_snapshot'] as Map?;
+                final snapList = snap?['linked_guardians'] as List?;
+                if (snapList != null && snapList.isNotEmpty) {
+                  return snapList.map((g) {
+                    final m = Map<String, dynamic>.from(g as Map);
+                    final uid = (m['uid'] as String? ?? '').trim();
+                    final id = (m['id'] as String? ?? '');
+                    final name = (m['name'] as String? ?? 'Guardian').trim();
+                    final phone = (m['phone'] as String? ?? '').trim();
+                    if (uid.isNotEmpty) {
+                      return <String, dynamic>{'attendant_uid': uid, 'attendant_name': name};
+                    }
+                    return <String, dynamic>{
+                      'attendant_uid': 'pending_$id',
+                      'attendant_name': name,
+                      'phone': phone,
+                      'is_pending': true,
+                    };
+                  }).toList();
+                }
+
+                // Fallback: manual_guardians (always persisted, no UIDs yet)
+                final manualList = List<Map<String, dynamic>>.from(
+                    data['manual_guardians'] as List? ?? []);
+                return manualList.map((mg) {
+                  final id = (mg['id'] as String? ?? '');
+                  final name = (mg['name'] as String? ?? 'Guardian').trim();
+                  final phone = (mg['phone'] as String? ?? '').trim();
+                  return <String, dynamic>{
+                    'attendant_uid': 'pending_$id',
+                    'attendant_name': name,
+                    'phone': phone,
+                    'is_pending': true,
+                  };
+                }).toList();
+              }));
 
 // Drives both sort order AND preloaded chat metadata (lastMessage, time, type)
 // for every guardian tile — one stream instead of N per-tile streams.
@@ -62,6 +113,127 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
   final _searchCtrl = TextEditingController();
   String _search = '';
 
+  // Non-null once resolution runs. Overrides the Firestore stream so the
+  // chat list never shows "pending" for a guardian who IS registered, even
+  // when Firestore has no data yet.
+  List<Map<String, dynamic>>? _resolvedLocally;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveGuardians());
+  }
+
+  /// Looks up a guardian's Firebase UID by querying Firestore guardians collection.
+  /// Does NOT require RTDB — works on devices where WebSocket is blocked.
+  Future<String?> _getGuardianUidByEmail(String email) async {
+    if (email.isEmpty) return null;
+    try {
+      final db = FirebaseFirestore.instance;
+      // Try flat email field (new saveProfile layout)
+      var qs = await db
+          .collection('guardians')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (qs.docs.isNotEmpty) return qs.docs.first.id;
+      // Try nested profile.email (legacy layout)
+      qs = await db
+          .collection('guardians')
+          .where('profile.email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (qs.docs.isNotEmpty) return qs.docs.first.id;
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _resolveGuardians() async {
+    final myUid = ref.read(_authUidProvider).valueOrNull ?? '';
+    if (myUid.isEmpty) return;
+    try {
+      // 1. Manual guardians from SharedPreferences (always available, no network).
+      List<dynamic>? rawList;
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('manual_guardians_${myUid}_v1');
+      if (cached != null) rawList = jsonDecode(cached) as List;
+
+      // Fallback: Firestore (only if SharedPreferences is empty).
+      if (rawList == null || rawList.isEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('patients')
+              .doc(myUid)
+              .get();
+          rawList = snap.data()?['manual_guardians'] as List?;
+        } catch (_) {}
+      }
+      if (rawList == null || rawList.isEmpty) return;
+
+      // 2. Resolve UIDs via RTDB email_index (works without Firestore).
+      final resolved = <Map<String, dynamic>>[];
+      final fsGuardians = <Map<String, dynamic>>[]; // for Firestore snapshot
+
+      for (final g in rawList) {
+        final m = Map<String, dynamic>.from(g as Map);
+        final email = (m['email'] ?? '').toString().trim().toLowerCase();
+        final name  = (m['name']  ?? 'Guardian').toString();
+        final phone = (m['phone'] ?? '').toString();
+        final id    = (m['id']    ?? '').toString();
+
+        String uid = '';
+        if (email.isNotEmpty) {
+          // Primary: Firestore query (works without RTDB WebSocket).
+          uid = await _getGuardianUidByEmail(email) ?? '';
+          // Fallback: RTDB email_index (works when RTDB is available).
+          if (uid.isEmpty) {
+            uid = await RealtimeDatabaseService.getUidByEmail(email) ?? '';
+          }
+        }
+
+        if (uid.isNotEmpty) {
+          resolved.add(<String, dynamic>{
+            'attendant_uid':  uid,
+            'attendant_name': name,
+          });
+          // Persist so the stream catches it even before Firestore is fixed.
+          RealtimeDatabaseService.saveResolvedGuardian(
+            patientUid:  myUid,
+            guardianUid: uid,
+            name:  name,
+            email: email,
+            phone: phone,
+          ).catchError((_) {});
+        } else {
+          resolved.add(<String, dynamic>{
+            'attendant_uid':  'pending_$id',
+            'attendant_name': name,
+            'phone': phone,
+            'email': email,
+            'is_pending': true,
+          });
+        }
+        fsGuardians.add(<String, dynamic>{
+          'id': id, 'name': name, 'email': email, 'phone': phone, 'uid': uid,
+        });
+      }
+
+      if (!mounted) return;
+      setState(() => _resolvedLocally = resolved);
+
+      // 3. Best-effort Firestore guardian_snapshot write (fixes things once
+      //    Firestore rules are deployed — no-op if rules aren't deployed yet).
+      final patientName = ref.read(userProvider)?.name ?? '';
+      LinkService.saveGuardiansSnapshot(
+        patientUid:  myUid,
+        guardians:   fsGuardians,
+        patientName: patientName,
+      ).catchError((_) {});
+    } catch (e) {
+      debugPrint('[ChatScreen] _resolveGuardians error: $e');
+    }
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -72,7 +244,9 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
   Widget build(BuildContext context) {
     final myUid = ref.watch(_authUidProvider).valueOrNull ?? '';
     final linkedAsync = ref.watch(_linkedGuardiansProvider(myUid));
-    final linked = linkedAsync.valueOrNull ?? [];
+    // Use locally-resolved list (RTDB-based, works without Firestore) when
+    // available. Falls back to the Firestore stream while resolution runs.
+    final linked = _resolvedLocally ?? linkedAsync.valueOrNull ?? [];
 
     // Single stream drives both sort order AND per-tile chat metadata.
     // Keyed by guardianId so each tile reads its own lastMessage/time/type
@@ -221,46 +395,60 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
           ),
         ),
       ),
-      body: linkedAsync.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : linked.isEmpty
-              ? _EmptyState(myUid: myUid)
-              : filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.search_off_rounded,
-                              size: 48, color: AppColors.accentTint),
-                          const SizedBox(height: 12),
-                          Text('No results for "$_search"',
-                              style: AppTextStyles.body.copyWith(
-                                  color: AppColors.textSecondary)),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      separatorBuilder: (_, __) => const Divider(
-                          height: 1, indent: 72, color: AppColors.divider),
-                      // +1 for the pinned Cardiva AI tile at the top
-                      itemCount: filtered.length + 1,
-                      itemBuilder: (_, i) {
-                        // Index 0 → Cardiva AI chat entry
-                        if (i == 0) return const _CardivaAiTile();
-                        final g = filtered[i - 1];
-                        final guardianUid =
-                            g['attendant_uid'] as String? ?? '';
-                        final guardianName =
-                            g['attendant_name'] as String? ?? 'Guardian';
-                        return _GuardianTile(
-                          myUid: myUid,
-                          guardianUid: guardianUid,
-                          guardianName: guardianName,
-                          chatData: chatDataMap[guardianUid],
-                        );
-                      },
-                    ),
+      body: Column(
+        children: [
+          // Cardiva AI tile — always pinned at top regardless of guardian count
+          const _CardivaAiTile(),
+          const Divider(height: 1, color: AppColors.divider),
+          Expanded(
+            child: linkedAsync.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : linked.isEmpty
+                    ? _EmptyState(myUid: myUid)
+                    : filtered.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.search_off_rounded,
+                                    size: 48, color: AppColors.accentTint),
+                                const SizedBox(height: 12),
+                                Text('No results for "$_search"',
+                                    style: AppTextStyles.body.copyWith(
+                                        color: AppColors.textSecondary)),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            separatorBuilder: (_, __) => const Divider(
+                                height: 1, indent: 72, color: AppColors.divider),
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final g = filtered[i];
+                              final guardianUid =
+                                  g['attendant_uid'] as String? ?? '';
+                              final guardianName =
+                                  g['attendant_name'] as String? ?? 'Guardian';
+
+                              if (_isPending(g)) {
+                                return _PendingGuardianTile(
+                                  name: guardianName,
+                                  phone: g['phone'] as String? ?? '',
+                                );
+                              }
+
+                              return _GuardianTile(
+                                myUid: myUid,
+                                guardianUid: guardianUid,
+                                guardianName: guardianName,
+                                chatData: chatDataMap[guardianUid],
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -300,6 +488,117 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
       );
+}
+
+// ── Pending guardian tile (registered in manual_guardians but no account yet) ─
+
+class _PendingGuardianTile extends StatelessWidget {
+  final String name;
+  final String phone;
+  const _PendingGuardianTile({required this.name, required this.phone});
+
+  void _showInfo(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: AppColors.bgLight,
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : 'G',
+                      style: AppTextStyles.h2.copyWith(
+                          color: AppColors.textSecondary, fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: AppTextStyles.h2),
+                      if (phone.isNotEmpty)
+                        Text(phone, style: AppTextStyles.caption),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        color: AppColors.warning, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'This guardian hasn\'t registered on Cardiva yet. '
+                        'Ask them to download the app and register with this contact info.',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: () => _showInfo(context),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: CircleAvatar(
+        radius: 26,
+        backgroundColor: AppColors.bgLight,
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'G',
+          style: AppTextStyles.h2.copyWith(
+              color: AppColors.textSecondary, fontSize: 18),
+        ),
+      ),
+      title: Text(name, style: AppTextStyles.h2),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(phone.isNotEmpty ? phone : 'No phone',
+              style: AppTextStyles.caption),
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('Pending — tap for info',
+                style: AppTextStyles.caption.copyWith(
+                    color: AppColors.warning, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Guardian tile ─────────────────────────────────────────────────────────────
@@ -493,18 +792,55 @@ class _PatientGuardianChatPageState
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
 
-  // Direct stream subscription — avoids Riverpod caching error state when the
-  // chat doc doesn't exist yet (rules deny before first message is sent).
   StreamSubscription<List<ChatMessage>>? _msgSub;
   List<ChatMessage> _messages = [];
   bool _msgLoading = true;
   bool _msgError = false;
 
+  // Multi-select
+  final _selectedIds = <String>{};
+  bool get _inSelectionMode => _selectedIds.isNotEmpty;
+
+  void _toggleSelect(String id) => setState(() {
+        if (_selectedIds.contains(id)) {
+          _selectedIds.remove(id);
+        } else {
+          _selectedIds.add(id);
+        }
+      });
+
+  Future<void> _deleteSelected() async {
+    final toDelete = _selectedIds.toList();
+    final msgs = _messages.where((m) => toDelete.contains(m.id)).toList();
+    setState(() {
+      _selectedIds.clear();
+      _messages = _messages.where((m) => !toDelete.contains(m.id)).toList();
+    });
+    for (final m in msgs) {
+      ChatService.deleteMessage(m.senderId, m.receiverId, m.id).catchError((_) {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _subscribeMessages();
+    // Force a server-side fetch so messages sent while this page was closed
+    // (e.g. emergency alerts from popup) are pulled into the local cache and
+    // delivered to the stream listener above.
+    _refreshFromServer();
     ChatService.markRead(widget.myUid, widget.guardianUid).catchError((_) {});
+  }
+
+  Future<void> _refreshFromServer() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(ChatService.chatId(widget.myUid, widget.guardianUid))
+          .collection('messages')
+          .orderBy('timestamp', descending: false)
+          .get(const GetOptions(source: Source.server));
+    } catch (_) {}
   }
 
   void _subscribeMessages() {
@@ -632,7 +968,13 @@ class _PatientGuardianChatPageState
       controller: _scroll,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: _messages.length,
-      itemBuilder: (_, i) => _Bubble(msg: _messages[i], myUid: widget.myUid),
+      itemBuilder: (_, i) => _Bubble(
+        msg: _messages[i],
+        myUid: widget.myUid,
+        isSelected: _selectedIds.contains(_messages[i].id),
+        isSelectionMode: _inSelectionMode,
+        onSelectMessage: _toggleSelect,
+      ),
     );
   }
 
@@ -640,54 +982,77 @@ class _PatientGuardianChatPageState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.primary, AppColors.primaryDeep],
-            ),
-            boxShadow: [
-              BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 3)),
-            ],
-          ),
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            foregroundColor: Colors.white,
-            title: Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  child: Text(
-                    widget.guardianName.isNotEmpty
-                        ? widget.guardianName[0].toUpperCase()
-                        : 'G',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  widget.guardianName,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white),
+      appBar: _inSelectionMode
+          ? AppBar(
+              backgroundColor: AppColors.primaryDeep,
+              foregroundColor: Colors.white,
+              leading: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() => _selectedIds.clear()),
+              ),
+              title: Text(
+                '${_selectedIds.length} selected',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete_rounded),
+                  tooltip: 'Delete selected',
+                  onPressed: _deleteSelected,
                 ),
               ],
+            )
+          : PreferredSize(
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.primary, AppColors.primaryDeep],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 3)),
+                  ],
+                ),
+                child: AppBar(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  foregroundColor: Colors.white,
+                  title: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        child: Text(
+                          widget.guardianName.isNotEmpty
+                              ? widget.guardianName[0].toUpperCase()
+                              : 'G',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.guardianName,
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
       body: Column(
         children: [
           Expanded(child: _buildMessageArea()),
@@ -708,7 +1073,17 @@ class _PatientGuardianChatPageState
 class _Bubble extends StatelessWidget {
   final ChatMessage msg;
   final String myUid;
-  const _Bubble({required this.msg, required this.myUid});
+  final bool isSelected;
+  final bool isSelectionMode;
+  final void Function(String id)? onSelectMessage;
+
+  const _Bubble({
+    required this.msg,
+    required this.myUid,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    this.onSelectMessage,
+  });
 
   bool get _isMe => msg.senderId == myUid;
 
@@ -739,6 +1114,15 @@ class _Bubble extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline_rounded,
+                  color: AppColors.primary),
+              title: const Text('Select'),
+              onTap: () {
+                Navigator.pop(context);
+                onSelectMessage?.call(msg.id);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy'),
@@ -839,62 +1223,101 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final time =
         '${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}';
-    return Align(
-      alignment: _isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: () => _showMenu(context),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: _bg(),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft: _isMe
-                  ? const Radius.circular(18)
-                  : const Radius.circular(4),
-              bottomRight: _isMe
-                  ? const Radius.circular(4)
-                  : const Radius.circular(18),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                  color: AppColors.shadowLg,
-                  blurRadius: 4,
-                  offset: Offset(0, 2))
-            ],
+
+    final bubble = GestureDetector(
+      onTap: isSelectionMode ? () => onSelectMessage?.call(msg.id) : null,
+      onLongPress: () {
+        if (isSelectionMode) {
+          onSelectMessage?.call(msg.id);
+        } else {
+          _showMenu(context);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? _bg().withValues(alpha: 0.6)
+              : _bg(),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft:
+                _isMe ? const Radius.circular(18) : const Radius.circular(4),
+            bottomRight:
+                _isMe ? const Radius.circular(4) : const Radius.circular(18),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (msg.type == MessageType.report)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.description_rounded, size: 13, color: _fg()),
-                      const SizedBox(width: 4),
-                      Text('Health Report',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: _fg())),
-                    ],
-                  ),
+          boxShadow: const [
+            BoxShadow(
+                color: AppColors.shadowLg, blurRadius: 4, offset: Offset(0, 2))
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (msg.type == MessageType.report)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.description_rounded, size: 13, color: _fg()),
+                    const SizedBox(width: 4),
+                    Text('Health Report',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _fg())),
+                  ],
                 ),
-              _buildText(),
-              const SizedBox(height: 4),
-              Text(time,
-                  style: TextStyle(
-                      fontSize: 10, color: _fg().withValues(alpha: 0.65))),
-            ],
-          ),
+              ),
+            _buildText(),
+            const SizedBox(height: 4),
+            Text(time,
+                style:
+                    TextStyle(fontSize: 10, color: _fg().withValues(alpha: 0.65))),
+          ],
         ),
       ),
+    );
+
+    // In selection mode wrap with a row that shows the checkmark circle.
+    if (isSelectionMode) {
+      final check = AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isSelected ? AppColors.primary : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.accentTint,
+            width: 2,
+          ),
+        ),
+        child: isSelected
+            ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
+            : null,
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment:
+              _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: _isMe
+              ? [bubble, const SizedBox(width: 8), check]
+              : [check, const SizedBox(width: 8), bubble],
+        ),
+      );
+    }
+
+    return Align(
+      alignment: _isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: bubble,
     );
   }
 }

@@ -11,7 +11,10 @@ service cloud.firestore {
     //      this is how QR-scanning guardians add/remove themselves.
     // ══════════════════════════════════════════════════════════════════════
     match /patients/{uid} {
-      allow read:   if isOwner(uid) || isLinkedGuardianOf();
+      // isGuardianEmailListed() lets a guardian read patient docs where their
+      // Firebase Auth email appears in guardian_emails — needed so the guardian
+      // dashboard and chat can load before QR / auto-link has run.
+      allow read:   if isOwner(uid) || isLinkedGuardianOf() || isGuardianEmailListed();
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || onlyLinkedGuardiansChanged();
       allow delete: if isOwner(uid);
@@ -63,18 +66,36 @@ service cloud.firestore {
         allow create:       if isSignedIn()
                                && isChatParticipant(chatId)
                                && request.resource.data.senderId == request.auth.uid;
-        allow delete: if false;
+        allow delete: if isSignedIn() && isChatParticipant(chatId);
       }
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  vitals_latest/{patientUid}
-    //    - Only the patient writes their own latest vitals snapshot.
-    //    - Any signed-in user can read it (guardian dashboard live feed).
+    //  vitals_latest/{docId}
+    //    - Patient writes their own doc: vitals_latest/{patientUid}
+    //    - Patient also writes guardian feed docs: vitals_latest/{guardianUid}
+    //      identified by patient_uid == auth.uid inside the document.
+    //    - Any signed-in user can read (guardian dashboard live feed).
     // ══════════════════════════════════════════════════════════════════════
-    match /vitals_latest/{patientUid} {
-      allow write: if isOwner(patientUid);
+    match /vitals_latest/{docId} {
+      allow write: if isOwner(docId)
+                   || (isSignedIn()
+                       && request.resource.data.patient_uid == request.auth.uid);
       allow read:  if isSignedIn();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  patient_alerts/{patientUid}/alerts/{alertId}
+    //    - Patient writes their own alert entries.
+    //    - Any signed-in user can read (guardian receives alerts).
+    // ══════════════════════════════════════════════════════════════════════
+    match /patient_alerts/{patientUid} {
+      allow read, write: if isOwner(patientUid);
+
+      match /alerts/{alertId} {
+        allow write: if isOwner(patientUid);
+        allow read:  if isSignedIn();
+      }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -112,6 +133,15 @@ service cloud.firestore {
       return isSignedIn()
           && request.resource.data.diff(resource.data)
                  .affectedKeys().hasOnly(['linked_guardians']);
+    }
+
+    // True when the calling user's Firebase Auth email is in the patient's
+    // guardian_emails array (stored lowercase by saveManualGuardians).
+    // Lets guardians read — and query — patient docs by email before QR linking.
+    function isGuardianEmailListed() {
+      return isSignedIn()
+          && 'guardian_emails' in resource.data
+          && request.auth.token.email in resource.data.guardian_emails;
     }
 
     // Symmetric: allows updating ONLY the linked_patients field on

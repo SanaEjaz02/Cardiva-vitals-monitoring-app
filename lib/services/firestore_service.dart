@@ -87,27 +87,43 @@ class FirestoreService {
 
   // ── Profile ───────────────────────────────────────────────────────────────
 
-  /// Saves profile map as patients/{uid}.profile  or  guardians/{uid}.profile.
+  /// Saves profile to the correct Firestore collection based on the role
+  /// embedded in [profileJson].
+  ///
+  /// patients/{uid}  → all fields saved flat at document root
+  /// guardians/{uid} → only name, email, phone, role (medical fields stripped)
+  ///
+  /// Data is written flat (not under a nested "profile" key) so it is visible
+  /// directly in the Firebase Console without clicking into sub-objects.
+  ///
+  /// Throws on Firestore failure — callers must handle the error.
   static Future<void> saveProfile(Map<String, dynamic> profileJson) async {
     final uid = _uid;
     if (uid == null) return;
-    final roleStr = profileJson['role'] as String?;
-    if (roleStr != null) _cachedRole = roleStr;
-    try {
-      debugPrint('[Firestore] saveProfile → ${_collectionFor(_cachedRole)}/$uid');
-      await _db
-          .collection(_collectionFor(_cachedRole))
-          .doc(uid)
-          .set({'profile': profileJson, 'role': _cachedRole},
-              SetOptions(merge: true));
-      debugPrint('[Firestore] saveProfile — ok');
-    } catch (e) {
-      debugPrint('[Firestore] saveProfile ERROR: $e');
-      rethrow;
-    }
-    // Guardian just set up profile — auto-link to any patients who added them by email
-    if (_cachedRole == 'attendant') {
-      final email = profileJson['email'] as String? ?? '';
+
+    final roleStr = ((profileJson['role'] as String?) ?? _cachedRole).toLowerCase();
+    _cachedRole = roleStr;
+    final isGuardian = roleStr == 'attendant';
+    final collection = isGuardian ? 'guardians' : 'patients';
+
+    // Guardian: only 3 fields + role. Patient: full flat profile (including band_id).
+    final Map<String, dynamic> toSave = isGuardian
+        ? {
+            'id': uid,
+            'name': profileJson['name'] ?? '',
+            'email': profileJson['email'] ?? '',
+            'phone': profileJson['phone'] ?? '',
+            'role': 'attendant',
+            if (profileJson['photo_url'] != null) 'photo_url': profileJson['photo_url'],
+          }
+        : Map<String, dynamic>.from(profileJson);
+
+    debugPrint('[Firestore] saveProfile → $collection/$uid');
+    await _db.collection(collection).doc(uid).set(toSave, SetOptions(merge: true));
+    debugPrint('[Firestore] ✅ saveProfile confirmed by server: $collection/$uid');
+
+    if (isGuardian) {
+      final email = (profileJson['email'] as String? ?? '').trim();
       if (email.isNotEmpty) {
         LinkService.autoLinkGuardianToPatients(
           guardianUid: uid,
@@ -131,6 +147,47 @@ class FirestoreService {
     return null;
   }
 
+  /// Reads patients/ and guardians/ in parallel and returns both role and
+  /// profile in a single Firestore round trip.
+  ///
+  /// Handles two document layouts:
+  ///   • Flat (new)   — all profile fields at document root
+  ///   • Nested (old) — profile fields under a "profile" sub-key
+  static Future<({String role, Map<String, dynamic> profile})?> loadRoleAndProfile() async {
+    final uid = _uid;
+    if (uid == null) return null;
+    try {
+      final results = await Future.wait([
+        _db.collection('patients').doc(uid).get(),
+        _db.collection('guardians').doc(uid).get(),
+      ]);
+      for (final snap in results) {
+        if (!snap.exists) continue;
+        final data = snap.data();
+        if (data == null) continue;
+        final role = data['role'] as String? ?? 'patient';
+        _cachedRole = role;
+
+        Map<String, dynamic> profile;
+        final nested = data['profile'] as Map<String, dynamic>?;
+        if (nested != null) {
+          // Legacy nested layout: { role, profile: { name, email, … } }
+          profile = Map<String, dynamic>.from(nested);
+        } else if (data.containsKey('name')) {
+          // New flat layout: { name, email, role, … } all at root
+          profile = Map<String, dynamic>.from(data);
+        } else {
+          // Document created by saveRole() but profile not filled yet
+          continue;
+        }
+        profile['role'] ??= role;
+        profile['id'] ??= uid;
+        return (role: role, profile: profile);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   // ── Manual guardians ──────────────────────────────────────────────────────
 
   /// Saves manually-added guardian list to patients/{uid}.manual_guardians.
@@ -139,19 +196,24 @@ class FirestoreService {
       List<Map<String, dynamic>> guardians) async {
     final doc = _userDoc;
     if (doc == null) return;
-    final emails = guardians
-        .map((g) => (g['email'] as String? ?? '').trim())
+    // Always lowercase emails so cross-collection queries match regardless
+    // of how the patient typed the address.
+    final normalized = guardians.map((g) {
+      final email = (g['email'] as String? ?? '').trim().toLowerCase();
+      return <String, dynamic>{...g, 'email': email};
+    }).toList();
+    final emails = normalized
+        .map((g) => (g['email'] as String? ?? ''))
         .where((e) => e.isNotEmpty)
         .toList();
     try {
       await doc.set({
-        'manual_guardians': guardians,
+        'manual_guardians': normalized,
         'guardian_emails': emails,
       }, SetOptions(merge: true));
-      debugPrint('[Firestore] saveManualGuardians — ok (${guardians.length})');
+      debugPrint('[Firestore] saveManualGuardians — ok (${normalized.length})');
     } catch (e) {
       debugPrint('[Firestore] saveManualGuardians ERROR: $e');
-      rethrow;
     }
   }
 
@@ -201,24 +263,31 @@ class FirestoreService {
   }
 
   // ── AI chat sessions (Groq chatbot) ──────────────────────────────────────
+  // Always write to / read from patients/{uid} so sessions persist regardless
+  // of what _cachedRole happens to be at save time.
 
   static Future<void> saveChatSessions(
       List<Map<String, dynamic>> sessions) async {
+    final uid = _uid;
+    if (uid == null) return;
     try {
-      final doc = _userDoc;
-      if (doc == null) return;
-      await doc.set({'ai_chat_sessions': sessions}, SetOptions(merge: true));
+      await _db.collection('patients').doc(uid).set(
+        {'ai_chat_sessions': sessions},
+        SetOptions(merge: true),
+      );
+      debugPrint('[Firestore] saveChatSessions — ok (${sessions.length} sessions)');
     } catch (e) {
       debugPrint('[Firestore] saveChatSessions ERROR: $e');
     }
   }
 
   static Future<List<Map<String, dynamic>>?> loadChatSessions() async {
+    final uid = _uid;
+    if (uid == null) return null;
     try {
-      final snap = await _userDoc?.get();
-      if (snap == null || !snap.exists) return null;
-      final data = snap.data() as Map<String, dynamic>?;
-      // Also check legacy key from older app versions
+      final snap = await _db.collection('patients').doc(uid).get();
+      if (!snap.exists) return null;
+      final data = snap.data();
       final ai = data?['ai_chat_sessions'] ?? data?['chat_sessions'];
       if (ai == null) return null;
       return List<Map<String, dynamic>>.from(ai as List);

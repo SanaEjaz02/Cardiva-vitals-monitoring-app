@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../auth/auth_screen.dart';
@@ -53,10 +54,10 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
           phone: _phoneCtrl.text.trim(),
         );
         ref.read(userProvider.notifier).updateProfile(updated);
-        await FirestoreService.saveProfile(updated.toJson());
-
-        // Also update Firebase Auth display name so it shows correctly in chat
-        await AuthService.currentUser?.updateDisplayName(name);
+        // Both saves are fire-and-forget — UI doesn't wait for server.
+        FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+        RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
+        AuthService.currentUser?.updateDisplayName(name).catchError((_) {});
       }
       if (mounted) setState(() => _editMode = false);
     } catch (_) {

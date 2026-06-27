@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
+import '../../services/account_switcher_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../attendant/attendant_main_screen.dart';
 import '../main_nav_screen.dart';
+import '../setup/profile_setup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'role_selection_screen.dart';
 
@@ -64,7 +67,10 @@ Color _strengthColor(int s) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AuthScreen extends ConsumerStatefulWidget {
-  const AuthScreen({super.key});
+  /// When set, the login email field is pre-filled (used by account switcher).
+  final String? prefilledEmail;
+
+  const AuthScreen({super.key, this.prefilledEmail});
 
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
@@ -75,9 +81,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   bool _isLogin = true;
   late AnimationController _switchController;
 
-  // Role for login (patient by default)
-  UserRole _loginRole = UserRole.patient;
-  // Role selected during registration
+  // Role is only collected during registration — login derives it from the saved profile.
   UserRole _registerRole = UserRole.patient;
 
   // Login fields
@@ -104,6 +108,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       vsync: this,
       duration: const Duration(milliseconds: 220),
     );
+    if (widget.prefilledEmail != null) {
+      _loginEmail.text = widget.prefilledEmail!;
+    }
   }
 
   @override
@@ -148,30 +155,46 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
           password: _loginPass.text,
         );
         if (!mounted) return;
-        await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
+        await _navigateByRole(isNewUser: false);
         return;
       } else {
         final cred = await AuthService.signUpWithEmail(
           email: _registerEmail.text.trim(),
           password: _registerPass.text,
         );
-        await cred.user?.updateDisplayName(_registerName.text.trim());
+        cred.user?.updateDisplayName(_registerName.text.trim()).catchError((_) {});
 
-        // Save role to Firestore — fire-and-forget so a rules/network failure
-        // never blocks navigation. Role is re-saved in RoleSelectionScreen.
         final roleStr = _registerRole == UserRole.attendant ? 'attendant' : 'patient';
+        // RTDB — primary fast store.
+        RealtimeDatabaseService.saveUserProfile({
+          'id': cred.user?.uid ?? '',
+          'role': roleStr,
+          'name': _registerName.text.trim(),
+          'email': cred.user?.email ?? '',
+        }).catchError((_) {});
+        // Firestore — needed for email-based guardian lookups and emergency SMS.
         FirestoreService.saveRole(roleStr).catchError((_) {});
 
+        // Seed the provider so ProfileSetupScreen reads the correct role
+        // without an extra round-trip.
+        final stub = UserProfile(
+          id: cred.user?.uid ?? '',
+          name: _registerName.text.trim(),
+          email: cred.user?.email ?? '',
+          phone: '',
+          dateOfBirth: DateTime(1990),
+          gender: '',
+          bloodGroup: '',
+          heightCm: 0,
+          weightKg: 0,
+          role: _registerRole,
+        );
+        ref.read(userProvider.notifier).setUser(stub);
+
         if (!mounted) return;
-        // RoleSelectionScreen confirms the role the user already picked
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => RoleSelectionScreen(
-              isNewUser: true,
-              preselected: _registerRole,
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
         );
         return;
       }
@@ -182,44 +205,35 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     }
   }
 
-  Future<void> _navigateByRole({
-    required bool isNewUser,
-    UserRole? selectedRole,
-  }) async {
-    // Load profile — sets userProvider state synchronously from local cache,
-    // then refreshes role from Firestore in the background.
+  Future<void> _navigateByRole({required bool isNewUser}) async {
     await ref.read(userProvider.notifier).loadFromStore();
     if (!mounted) return;
 
     final profile = ref.read(userProvider);
 
-    // No profile found anywhere → first time or data missing → pick a role.
+    // No profile found (fresh install or data missing) → ask for role first.
     if (profile == null) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-            builder: (_) => RoleSelectionScreen(
-                isNewUser: isNewUser, preselected: selectedRole)),
+            builder: (_) => RoleSelectionScreen(isNewUser: isNewUser)),
       );
       return;
     }
 
-    final role = profile.role;
-
-    // Warn if the login-screen role pill doesn't match the actual account role.
-    if (selectedRole != null && selectedRole != role) {
-      final label = role == UserRole.attendant ? 'Guardian' : 'Patient';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'This account is registered as $label. Redirecting to the $label portal.'),
-          backgroundColor: AppColors.warning,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+    final fbUser = FirebaseAuth.instance.currentUser;
+    if (fbUser != null) {
+      AccountSwitcherService.upsertAccount(SavedAccount(
+        uid: fbUser.uid,
+        email: fbUser.email ?? '',
+        name: profile.name.isNotEmpty
+            ? profile.name
+            : (fbUser.displayName ?? ''),
+        role: profile.role == UserRole.attendant ? 'attendant' : 'patient',
+      )).catchError((_) {});
     }
 
-    if (role == UserRole.attendant) {
+    if (profile.role == UserRole.attendant) {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const AttendantMainScreen()),
@@ -256,7 +270,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         );
       } else {
         if (!mounted) return;
-        await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
+        await _navigateByRole(isNewUser: false);
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
@@ -272,7 +286,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     try {
       await AuthService.signInWithApple();
       if (!mounted) return;
-      await _navigateByRole(isNewUser: false, selectedRole: _loginRole);
+      await _navigateByRole(isNewUser: false);
     } on FirebaseAuthException catch (e) {
       if (mounted) _showError(AuthService.friendlyError(e));
       if (mounted) setState(() => _loading = false);
@@ -322,18 +336,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
               // Login / Register toggle pill
               _TogglePill(isLogin: _isLogin, onToggle: _toggle),
               const SizedBox(height: 24),
-              // Role selector — visible on both login and register tabs
-              _RoleToggle(
-                selected: _isLogin ? _loginRole : _registerRole,
-                onSelect: (r) => setState(() {
-                  if (_isLogin) {
-                    _loginRole = r;
-                  } else {
-                    _registerRole = r;
-                  }
-                }),
-              ),
-              const SizedBox(height: 20),
+              // Role selector — registration only. Login derives role from saved profile.
+              if (!_isLogin) ...[
+                _RoleToggle(
+                  selected: _registerRole,
+                  onSelect: (r) => setState(() => _registerRole = r),
+                ),
+                const SizedBox(height: 20),
+              ],
               // Form
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
@@ -835,7 +845,7 @@ class _RoleToggle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Login as',
+          'I am a',
           style: AppTextStyles.caption.copyWith(
             fontWeight: FontWeight.w600,
             color: AppColors.textSecondary,

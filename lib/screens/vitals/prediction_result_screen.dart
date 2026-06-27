@@ -79,10 +79,54 @@ class _PredictionResultScreenState
         userPhone: user?.phone ?? '',
         userId: user?.id ?? 'demo-user-001',
       );
-      if (mounted) setState(() => _alertSent = true);
+      if (mounted) {
+        setState(() => _alertSent = true);
+        _showAlertSentDialog();
+      }
     } finally {
       if (mounted) setState(() => _alertSending = false);
     }
+  }
+
+  void _showAlertSentDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: AppColors.success, size: 22),
+              const SizedBox(width: 8),
+              Text('Alert Sent', style: AppTextStyles.h2),
+            ],
+          ),
+          content: Text(
+            'Emergency alert has been sent to all your linked guardians via Cardiva Chat. '
+            'Tap OK to open the chat.',
+            style: AppTextStyles.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (!mounted) return;
+                // Clear the analysis stack and land on the guardian chat list.
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  AppRouter.patientChat,
+                  (route) => route.isFirst,
+                );
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _askAndSendAlert() async {

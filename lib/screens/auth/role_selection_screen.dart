@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/user_profile.dart';
 import '../../providers/user_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../attendant/attendant_main_screen.dart';
@@ -42,16 +44,29 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
     setState(() => _saving = true);
 
     final roleStr = _selected == UserRole.attendant ? 'attendant' : 'patient';
-
-    // Save as top-level Firestore field (fast role lookup on login)
-    FirestoreService.saveRole(roleStr).catchError((_) {});
-
-    // Also persist inside the full profile
     final profile = ref.read(userProvider);
     if (profile != null) {
       final updated = profile.copyWith(role: _selected);
       ref.read(userProvider.notifier).updateProfile(updated);
+      RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
       FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+    } else {
+      final fbUser = FirebaseAuth.instance.currentUser;
+      final stub = UserProfile(
+        id: fbUser?.uid ?? '',
+        name: fbUser?.displayName ?? '',
+        email: fbUser?.email ?? '',
+        phone: '',
+        dateOfBirth: DateTime(1990),
+        gender: '',
+        bloodGroup: '',
+        heightCm: 0,
+        weightKg: 0,
+        role: _selected!,
+      );
+      ref.read(userProvider.notifier).setUser(stub);
+      RealtimeDatabaseService.saveUserProfile(stub.toJson()).catchError((_) {});
+      FirestoreService.saveRole(roleStr).catchError((_) {});
     }
 
     if (!mounted) return;

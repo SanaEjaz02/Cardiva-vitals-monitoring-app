@@ -159,11 +159,21 @@ class _EmergencyPopupState extends State<EmergencyPopup>
         'Needs immediate assistance. Please respond now.\n'
         '— Sent by Cardiva Health Monitor$locationLine';
 
-    // Send in-app emergency alert via Cardiva Chat to all linked guardians
+    // Send in-app emergency alert via Cardiva Chat to all linked guardians.
+    // Read UIDs from the patient-owned snapshot first (includes manually-added
+    // guardians whose UIDs were resolved). Fall back to linked_guardians array.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      LinkService.linkedAttendantsStream(uid).first.then((attendantUids) {
-        for (final aUid in attendantUids) {
+      LinkService.patientSnapshotStream(uid).first.then((snap) async {
+        final guardians = snap?['linked_guardians'] as List? ?? [];
+        var uids = guardians
+            .map((g) => (g as Map)['uid'] as String? ?? '')
+            .where((u) => u.isNotEmpty)
+            .toList();
+        if (uids.isEmpty) {
+          uids = await LinkService.linkedAttendantsStream(uid).first;
+        }
+        for (final aUid in uids) {
           ChatService.sendMessage(
             patientUid: uid,
             guardianUid: aUid,
@@ -178,12 +188,6 @@ class _EmergencyPopupState extends State<EmergencyPopup>
 
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _show1122 = true);
-    });
-
-    // Automatically navigate to the chat tab 2.5 s after sending so the patient
-    // can see the alert in their chat and wait for guardian replies.
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted) _openChat();
     });
   }
 
@@ -376,8 +380,22 @@ class _EmergencyPopupState extends State<EmergencyPopup>
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success),
                       onPressed: _openChat,
-                      child: const Text('Open Cardiva Chat'),
+                      child: const Text('OK — Open Chat'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(
+                        'Dismiss',
+                        style: AppTextStyles.body
+                            .copyWith(color: AppColors.textSecondary),
+                      ),
                     ),
                   ),
                 ],

@@ -7,13 +7,16 @@ import '../../services/link_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import 'attendant_patient_chat_screen.dart';
-import 'scan_qr_screen.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
+// Uses Firestore guardians/{uid}.linked_patients — works on devices where
+// RTDB WebSocket is blocked. RTDB guardian_patients remains a best-effort sync.
 final _linkedPatientsForChatProvider =
     StreamProvider.family<List<Map<String, dynamic>>, String>(
-        (ref, uid) => LinkService.linkedPatientsStream(uid));
+        (ref, uid) => uid.isEmpty
+            ? Stream.value([])
+            : LinkService.linkedPatientsStream(uid));
 
 final _chatDocForGuardianProvider =
     StreamProvider.family<Map<String, dynamic>?, _ChatKey>((ref, key) {
@@ -53,6 +56,21 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
   String _search = '';
 
   @override
+  void initState() {
+    super.initState();
+    // Re-run auto-link on every chat screen open so guardian_patients RTDB
+    // entries exist even if they weren't written at login time.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = AuthService.currentUser;
+      if (user == null || (user.email ?? '').isEmpty) return;
+      LinkService.autoLinkGuardianToPatients(
+        guardianUid:   user.uid,
+        guardianEmail: user.email!,
+      ).catchError((_) {});
+    });
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
@@ -65,80 +83,51 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
 
     return Column(
       children: [
-        // ── WhatsApp-style header ──────────────────────────────────────────
-        Container(
-          color: AppColors.primaryDeep,
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.medical_services_rounded,
-                        color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Cardiva',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            height: 1.2),
-                      ),
-                      Text(
-                        'Messages',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withValues(alpha: 0.8),
-                            height: 1.2),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  // Scan QR shortcut
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ScanQrScreen()),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+        // ── Messages header ────────────────────────────────────────────────
+        SafeArea(
+          bottom: false,
+          child: Container(
+            color: AppColors.primaryDeep,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.qr_code_scanner_rounded,
-                              color: Colors.white, size: 16),
-                          SizedBox(width: 6),
-                          Text('Scan QR',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
+                      child: const Icon(Icons.medical_services_rounded,
+                          color: Colors.white, size: 18),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Cardiva',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              height: 1.2),
+                        ),
+                        Text(
+                          'Messages',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              height: 1.2),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
               // ── Search bar ───────────────────────────────────────────────
               TextField(
                 controller: _searchCtrl,
@@ -174,6 +163,7 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
               const SizedBox(height: 12),
             ],
           ),
+        ),
         ),
 
         // ── Patient list ───────────────────────────────────────────────────
@@ -228,27 +218,9 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
                                 .copyWith(color: AppColors.textSecondary)),
                         const SizedBox(height: 8),
                         Text(
-                          'Scan a patient\'s QR code to link and start messaging.',
+                          'You\'ll appear here automatically once a patient adds you as their guardian using your email.',
                           style: AppTextStyles.caption,
                           textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ScanQrScreen()),
-                          ),
-                          icon: const Icon(Icons.qr_code_scanner_rounded),
-                          label: const Text('Scan Patient QR'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 12),
-                          ),
                         ),
                       ],
                     ),

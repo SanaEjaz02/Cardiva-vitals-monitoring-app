@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +36,29 @@ class _AttendantPatientChatScreenState
   bool _msgLoading = true;
   bool _msgError = false;
 
+  final _selectedIds = <String>{};
+  bool get _inSelectionMode => _selectedIds.isNotEmpty;
+
+  void _toggleSelect(String id) => setState(() {
+        if (_selectedIds.contains(id)) {
+          _selectedIds.remove(id);
+        } else {
+          _selectedIds.add(id);
+        }
+      });
+
+  Future<void> _deleteSelected() async {
+    final toDelete = _selectedIds.toList();
+    final msgs = _messages.where((m) => toDelete.contains(m.id)).toList();
+    setState(() {
+      _selectedIds.clear();
+      _messages = _messages.where((m) => !toDelete.contains(m.id)).toList();
+    });
+    for (final m in msgs) {
+      ChatService.deleteMessage(m.senderId, m.receiverId, m.id).catchError((_) {});
+    }
+  }
+
   String get _myUid => AuthService.currentUser?.uid ?? '';
   String get _myName => ref.read(userProvider)?.name ?? 'Guardian';
 
@@ -42,7 +66,19 @@ class _AttendantPatientChatScreenState
   void initState() {
     super.initState();
     _subscribeMessages();
+    _refreshFromServer();
     ChatService.markRead(_myUid, widget.patientUid).catchError((_) {});
+  }
+
+  Future<void> _refreshFromServer() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(ChatService.chatId(widget.patientUid, _myUid))
+          .collection('messages')
+          .orderBy('timestamp', descending: false)
+          .get(const GetOptions(source: Source.server));
+    } catch (_) {}
   }
 
   void _subscribeMessages() {
@@ -167,7 +203,13 @@ class _AttendantPatientChatScreenState
       controller: _scroll,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: _messages.length,
-      itemBuilder: (_, i) => _MessageBubble(msg: _messages[i], myUid: _myUid),
+      itemBuilder: (_, i) => _MessageBubble(
+        msg: _messages[i],
+        myUid: _myUid,
+        isSelected: _selectedIds.contains(_messages[i].id),
+        isSelectionMode: _inSelectionMode,
+        onSelectMessage: _toggleSelect,
+      ),
     );
   }
 
@@ -175,54 +217,77 @@ class _AttendantPatientChatScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.primary, AppColors.primaryDeep],
-            ),
-            boxShadow: [
-              BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 3)),
-            ],
-          ),
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            foregroundColor: Colors.white,
-            title: Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  child: Text(
-                    widget.patientName.isNotEmpty
-                        ? widget.patientName[0].toUpperCase()
-                        : 'P',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  widget.patientName,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white),
+      appBar: _inSelectionMode
+          ? AppBar(
+              backgroundColor: AppColors.primaryDeep,
+              foregroundColor: Colors.white,
+              leading: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() => _selectedIds.clear()),
+              ),
+              title: Text(
+                '${_selectedIds.length} selected',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete_rounded),
+                  tooltip: 'Delete selected',
+                  onPressed: _deleteSelected,
                 ),
               ],
+            )
+          : PreferredSize(
+              preferredSize: const Size.fromHeight(kToolbarHeight),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.primary, AppColors.primaryDeep],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 3)),
+                  ],
+                ),
+                child: AppBar(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  foregroundColor: Colors.white,
+                  title: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        child: Text(
+                          widget.patientName.isNotEmpty
+                              ? widget.patientName[0].toUpperCase()
+                              : 'P',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.patientName,
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
       body: Column(
         children: [
           Expanded(child: _buildMessageArea()),
@@ -236,7 +301,17 @@ class _AttendantPatientChatScreenState
 class _MessageBubble extends StatelessWidget {
   final ChatMessage msg;
   final String myUid;
-  const _MessageBubble({required this.msg, required this.myUid});
+  final bool isSelected;
+  final bool isSelectionMode;
+  final void Function(String id)? onSelectMessage;
+
+  const _MessageBubble({
+    required this.msg,
+    required this.myUid,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    this.onSelectMessage,
+  });
 
   bool get _isMe => msg.senderId == myUid;
 
@@ -267,6 +342,15 @@ class _MessageBubble extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline_rounded,
+                  color: AppColors.primary),
+              title: const Text('Select'),
+              onTap: () {
+                Navigator.pop(context);
+                onSelectMessage?.call(msg.id);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy'),
@@ -365,62 +449,101 @@ class _MessageBubble extends StatelessWidget {
     final time =
         '${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}';
 
-    return Align(
-      alignment: _isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: () => _showMenu(context),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: _bubbleColor(),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft:
-                  _isMe ? const Radius.circular(18) : const Radius.circular(4),
-              bottomRight:
-                  _isMe ? const Radius.circular(4) : const Radius.circular(18),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                  color: AppColors.shadowLg,
-                  blurRadius: 4,
-                  offset: Offset(0, 2))
-            ],
+    final bubble = GestureDetector(
+      onTap: isSelectionMode ? () => onSelectMessage?.call(msg.id) : null,
+      onLongPress: () {
+        if (isSelectionMode) {
+          onSelectMessage?.call(msg.id);
+        } else {
+          _showMenu(context);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? _bubbleColor().withValues(alpha: 0.6)
+              : _bubbleColor(),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft:
+                _isMe ? const Radius.circular(18) : const Radius.circular(4),
+            bottomRight:
+                _isMe ? const Radius.circular(4) : const Radius.circular(18),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (msg.type == MessageType.report)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.description_rounded,
-                          size: 14, color: _textColor()),
-                      const SizedBox(width: 4),
-                      Text('Health Report',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: _textColor())),
-                    ],
-                  ),
+          boxShadow: const [
+            BoxShadow(
+                color: AppColors.shadowLg, blurRadius: 4, offset: Offset(0, 2))
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (msg.type == MessageType.report)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.description_rounded,
+                        size: 14, color: _textColor()),
+                    const SizedBox(width: 4),
+                    Text('Health Report',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _textColor())),
+                  ],
                 ),
-              _buildText(),
-              const SizedBox(height: 4),
-              Text(time,
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: _textColor().withValues(alpha: 0.65))),
-            ],
-          ),
+              ),
+            _buildText(),
+            const SizedBox(height: 4),
+            Text(time,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: _textColor().withValues(alpha: 0.65))),
+          ],
         ),
       ),
+    );
+
+    if (isSelectionMode) {
+      final check = AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isSelected ? AppColors.primary : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.accentTint,
+            width: 2,
+          ),
+        ),
+        child: isSelected
+            ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
+            : null,
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment:
+              _isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: _isMe
+              ? [bubble, const SizedBox(width: 8), check]
+              : [check, const SizedBox(width: 8), bubble],
+        ),
+      );
+    }
+
+    return Align(
+      alignment: _isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: bubble,
     );
   }
 }

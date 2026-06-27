@@ -166,6 +166,21 @@ class ChatService {
         .delete();
   }
 
+  // ── Delete an entire chat (all messages + the chat doc itself) ────────────
+
+  static Future<void> deleteChat(
+      String patientUid, String guardianUid) async {
+    final cid = chatId(patientUid, guardianUid);
+    final chatRef = _db.collection('chats').doc(cid);
+    final msgs = await chatRef.collection('messages').get();
+    final batch = _db.batch();
+    for (final doc in msgs.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(chatRef);
+    await batch.commit();
+  }
+
   // ── Per-conversation unread count ─────────────────────────────────────────
   // Single-field filter avoids requiring a composite Firestore index.
   // isRead is checked client-side.

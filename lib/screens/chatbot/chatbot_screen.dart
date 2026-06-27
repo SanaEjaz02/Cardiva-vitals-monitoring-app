@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -170,10 +170,10 @@ class _ChatbotScreenState extends State<ChatbotScreen>
         });
       } catch (_) {}
     }
-    // Merge from Firestore for cross-device sync
+    // Merge from RTDB for cross-device sync
     try {
-      final remote = await FirestoreService.loadChatSessions();
-      if (remote != null && remote.isNotEmpty) {
+      final remote = await RealtimeDatabaseService.loadChatSessions();
+      if (remote.isNotEmpty) {
         final existing = {for (final s in _sessions) s.id: s};
         for (final j in remote) {
           final s = _ChatSession.fromJson(j);
@@ -197,8 +197,8 @@ class _ChatbotScreenState extends State<ChatbotScreen>
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(_sessions.map((s) => s.toJson()).toList());
     await prefs.setString(_chatKey, encoded);
-    // Sync to Firestore in background
-    FirestoreService.saveChatSessions(
+    // Sync to RTDB in background
+    RealtimeDatabaseService.saveChatSessions(
       _sessions.map((s) => s.toJson()).toList(),
     ).catchError((_) {});
   }
