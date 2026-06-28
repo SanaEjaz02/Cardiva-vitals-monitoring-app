@@ -649,6 +649,27 @@ class RealtimeDatabaseService {
 
   // ── Presence / online state ───────────────────────────────────────────────
 
+  static Future<void> saveFeedback({
+    required String userId,
+    required String userEmail,
+    required String userName,
+    required int rating,
+    required String category,
+    required String message,
+  }) async {
+    try {
+      await _rtdb.ref('feedback').push().set({
+        'userId': userId,
+        'userEmail': userEmail,
+        'userName': userName,
+        'rating': rating,
+        'category': category,
+        'message': message,
+        'createdAt': ServerValue.timestamp,
+      });
+    } catch (_) {}
+  }
+
   /// Sets the signed-in user as online. Automatically clears on disconnect.
   static void setOnline() {
     final uid = _uid;

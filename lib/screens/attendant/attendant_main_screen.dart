@@ -125,45 +125,7 @@ class _AttendantMainScreenState extends ConsumerState<AttendantMainScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F9FC),
-      appBar: _currentIndex >= 1
-          ? null // Messages, Alerts, and Profile tabs manage their own headers
-          : AppBar(
-              backgroundColor: AppColors.primaryDeep,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              automaticallyImplyLeading: false,
-              title: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.medical_services_rounded,
-                        color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Cardiva',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              height: 1.2)),
-                      Text('Guardian Portal',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.8),
-                              height: 1.2)),
-                    ],
-                  ),
-                ],
-              ),
-              actions: const [],
-            ),
+      appBar: null, // All tabs manage their own headers
       body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: _AttendantBottomNav(
         currentIndex: _currentIndex,

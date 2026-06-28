@@ -201,61 +201,17 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                       const SizedBox(height: 6),
                       Text(
                         isGuardian
-                            ? 'This helps personalize your profile. Your phone number is needed for emergency SMS alerts.'
+                            ? 'This helps personalize your guardian profile.'
                             : 'This helps us personalize your health thresholds.',
                         style: AppTextStyles.body
                             .copyWith(color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 28),
-                      Center(
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: const BoxDecoration(
-                                color: AppColors.bgLight,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.camera_alt_outlined,
-                                  color: AppColors.primary, size: 32),
-                            ),
-                            const SizedBox(height: 6),
-                            Text('Add photo',
-                                style: AppTextStyles.caption
-                                    .copyWith(color: AppColors.primary)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
                       TextFormField(
                         controller: _nameCtrl,
                         decoration: const InputDecoration(hintText: 'Full name'),
                         validator: (v) =>
                             (v == null || v.isEmpty) ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      // Phone — required for guardian, optional for patient
-                      TextFormField(
-                        controller: _phoneCtrl,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          hintText: 'Phone number (e.g. 3001234567)',
-                          prefixText: '+92 ',
-                        ),
-                        validator: isGuardian
-                            ? (v) => (v == null || v.trim().isEmpty)
-                                ? 'Phone is required for emergency alerts'
-                                : null
-                            : null,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        isGuardian
-                            ? 'Required for emergency SMS alerts'
-                            : 'Optional — used for emergency contacts',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 12),
                       // DOB, gender, vitals — same for both roles

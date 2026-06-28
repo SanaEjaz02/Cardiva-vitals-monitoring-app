@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/firestore_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
@@ -58,16 +59,28 @@ class _FeedbackSheetState extends State<_FeedbackSheet>
     if (_rating == 0 || _category == null) return;
     setState(() => _submitting = true);
     final user = FirebaseAuth.instance.currentUser;
+    bool saved = false;
     try {
       await FirestoreService.saveFeedback(
         userId: user?.uid ?? 'guest',
         userEmail: user?.email ?? '',
-        userName: user?.displayName ?? 'Patient',
+        userName: user?.displayName ?? '',
         rating: _rating,
         category: _category!,
         message: _messageCtrl.text.trim(),
       );
+      saved = true;
     } catch (_) {}
+    if (!saved) {
+      await RealtimeDatabaseService.saveFeedback(
+        userId: user?.uid ?? 'guest',
+        userEmail: user?.email ?? '',
+        userName: user?.displayName ?? '',
+        rating: _rating,
+        category: _category!,
+        message: _messageCtrl.text.trim(),
+      );
+    }
     if (mounted) {
       setState(() {
         _submitting = false;

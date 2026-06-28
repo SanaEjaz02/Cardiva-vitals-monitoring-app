@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/user_provider.dart';
 import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -33,6 +34,13 @@ final _vitalsMapProvider =
 class AttendantDashboardTab extends ConsumerWidget {
   const AttendantDashboardTab({super.key});
 
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning,';
+    if (hour < 17) return 'Good afternoon,';
+    return 'Good evening,';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(_guardianAuthUidProvider).valueOrNull ?? '';
@@ -52,15 +60,78 @@ class AttendantDashboardTab extends ConsumerWidget {
     }).toList();
 
     final isLoading = rosterAsync.isLoading;
+    final guardianName = ref.watch(userProvider)?.name ?? '';
+    final firstName = guardianName.isNotEmpty
+        ? guardianName.split(' ').first
+        : FirebaseAuth.instance.currentUser?.displayName?.split(' ').first ?? 'Guardian';
 
-    return Container(
-      color: const Color(0xFFF0F4F8),
-      child: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                // ── Section header ───────────────────────────────────────────
-                SliverPadding(
+    return Stack(
+      children: [
+        // ── Light gradient background ────────────────────────────────────
+        const Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFE2F4FC), Color(0xFFF0FAFF), Colors.white],
+                stops: [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+        ),
+        // ── Dark decorative header blob ─────────────────────────────────
+        const Positioned(
+          top: 0, left: 0, right: 0,
+          child: _GuardianHeaderBlob(),
+        ),
+        // ── Scrollable content ──────────────────────────────────────────
+        isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : CustomScrollView(
+                slivers: [
+                  // Greeting header
+                  SliverToBoxAdapter(
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _greeting,
+                              style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.70),
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              firstName,
+                              style: AppTextStyles.h1.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 28,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Guardian Portal',
+                              style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 80),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // ── Section header ──────────────────────────────────────
+                  SliverPadding(
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
                   sliver: SliverToBoxAdapter(
                     child: Row(
@@ -132,8 +203,71 @@ class AttendantDashboardTab extends ConsumerWidget {
                   ),
               ],
             ),
+      ],
     );
   }
+}
+
+// ── Guardian header blob ──────────────────────────────────────────────────────
+
+class _GuardianHeaderBlob extends StatelessWidget {
+  const _GuardianHeaderBlob();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _GuardianHeaderBlobPainter(),
+      child: const SizedBox(height: 220),
+    );
+  }
+}
+
+class _GuardianHeaderBlobPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF050A2E), Color(0xFF0A2F5A), Color(0xFF0D4F78)],
+        stops: [0.0, 0.55, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height * 0.72)
+      ..quadraticBezierTo(
+        size.width * 0.75, size.height * 1.08,
+        size.width * 0.35, size.height * 0.85,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.10, size.height * 0.68,
+        0, size.height * 0.78,
+      )
+      ..close();
+    canvas.drawPath(path, paint);
+
+    _drawOrb(canvas, Offset(size.width * 0.85, size.height * 0.20),
+        70, const Color(0xFF2A7FAA), 0.12);
+    _drawOrb(canvas, Offset(size.width * 0.12, size.height * 0.55),
+        50, const Color(0xFF5BA8C8), 0.09);
+    _drawOrb(canvas, Offset(size.width * 0.55, size.height * 0.08),
+        35, const Color(0xFF1A6A90), 0.07);
+  }
+
+  void _drawOrb(Canvas canvas, Offset center, double radius, Color color, double opacity) {
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = color.withValues(alpha: opacity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Patient card ─────────────────────────────────────────────────────────────

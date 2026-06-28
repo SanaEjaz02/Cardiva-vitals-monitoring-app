@@ -1,11 +1,14 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/user_provider.dart';
+import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../widgets/account_switcher_sheet.dart';
 import '../auth/auth_screen.dart';
 import '../profile/feedback_sheet.dart';
 
@@ -18,58 +21,41 @@ class AttendantProfileTab extends ConsumerStatefulWidget {
 }
 
 class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
-  bool _editMode = false;
-  late TextEditingController _nameCtrl;
-  late TextEditingController _phoneCtrl;
-  bool _saving = false;
+  bool _deleting = false;
 
-  @override
-  void initState() {
-    super.initState();
+  Future<void> _showEditProfile() async {
     final profile = ref.read(userProvider);
-    _nameCtrl = TextEditingController(text: profile?.name ?? '');
-    _phoneCtrl = TextEditingController(text: profile?.phone ?? '');
-  }
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveProfile() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name is required.')),
-      );
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final profile = ref.read(userProvider);
-      if (profile != null) {
-        final updated = profile.copyWith(
-          name: name,
-          phone: _phoneCtrl.text.trim(),
-        );
-        ref.read(userProvider.notifier).updateProfile(updated);
-        // Both saves are fire-and-forget — UI doesn't wait for server.
-        FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
-        RealtimeDatabaseService.saveUserProfile(updated.toJson());
-        AuthService.currentUser?.updateDisplayName(name).catchError((_) {});
-      }
-      if (mounted) setState(() => _editMode = false);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save. Try again.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    final nameCtrl = TextEditingController(text: profile?.name ?? '');
+    final phoneCtrl = TextEditingController(text: profile?.phone ?? '');
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditProfileSheet(
+        nameCtrl: nameCtrl,
+        phoneCtrl: phoneCtrl,
+        onSave: () async {
+          final name = nameCtrl.text.trim();
+          if (name.isEmpty) return;
+          final current = ref.read(userProvider);
+          if (current == null) return;
+          final updated = current.copyWith(
+            name: name,
+            phone: phoneCtrl.text.trim(),
+          );
+          ref.read(userProvider.notifier).updateProfile(updated);
+          FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+          RealtimeDatabaseService.saveUserProfile(updated.toJson());
+          AuthService.currentUser?.updateDisplayName(name).catchError((_) {});
+        },
+      ),
+    );
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
   }
 
   Future<void> _confirmLogout() async {
@@ -89,16 +75,14 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text('Sign out',
-                style: AppTextStyles.body.copyWith(color: AppColors.danger)),
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
-
     ref.read(userProvider.notifier).clearUser();
     await AuthService.signOut();
-
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -107,374 +91,386 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
     );
   }
 
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete Account?', style: AppTextStyles.h2),
+        content: Text(
+          'This permanently deletes your account and all linked data. This cannot be undone.',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await FirestoreService.deleteAccount();
+      await RealtimeDatabaseService.deleteUserData();
+      ref.read(userProvider.notifier).clearUser();
+      await AuthService.currentUser?.delete();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _deleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(userProvider);
-    final email = AuthService.currentUser?.email ?? profile?.email ?? '';
     final name = profile?.name ?? '';
-    final phone = profile?.phone ?? '';
+    final email =
+        FirebaseAuth.instance.currentUser?.email ?? profile?.email ?? '';
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'G';
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Avatar + name header
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 44,
-                  backgroundColor: AppColors.success.withValues(alpha: 0.15),
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : 'G',
-                    style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.success,
+    if (_deleting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F9FC),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 60),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            // ── Avatar ────────────────────────────────────────────────
+            Center(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 48,
+                    backgroundColor:
+                        AppColors.success.withValues(alpha: 0.12),
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.success,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  name.isEmpty ? 'Set your name' : name,
-                  style: AppTextStyles.h1.copyWith(fontSize: 20),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
+                  const SizedBox(height: 14),
+                  Text(
+                    name.isEmpty ? 'Set your name' : name,
+                    style: AppTextStyles.h1.copyWith(
+                        fontSize: 22, fontWeight: FontWeight.w800),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.medical_services_rounded,
-                          color: AppColors.success, size: 12),
-                      SizedBox(width: 6),
-                      Text('Guardian',
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color:
+                              AppColors.success.withValues(alpha: 0.25)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.medical_services_rounded,
+                            color: AppColors.success, size: 13),
+                        SizedBox(width: 6),
+                        Text(
+                          'Guardian',
                           style: TextStyle(
                               color: AppColors.success,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 28),
-
-          // Profile card
-          _SectionCard(
-            title: 'My Profile',
-            trailing: _editMode
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.edit_rounded,
-                        color: AppColors.primary, size: 20),
-                    tooltip: 'Edit',
-                    onPressed: () => setState(() => _editMode = true),
-                  ),
-            children: _editMode
-                ? [
-                    _EditField(
-                      label: 'Full Name *',
-                      ctrl: _nameCtrl,
-                      icon: Icons.person_rounded,
-                    ),
-                    const SizedBox(height: 12),
-                    _EditField(
-                      label: 'Phone Number',
-                      ctrl: _phoneCtrl,
-                      icon: Icons.phone_rounded,
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _saving
-                                ? null
-                                : () => setState(() => _editMode = false),
-                            style: OutlinedButton.styleFrom(
-                              side:
-                                  const BorderSide(color: AppColors.accentTint),
-                            ),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _saving ? null : _saveProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: _saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 2),
-                                  )
-                                : const Text('Save'),
-                          ),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5),
                         ),
                       ],
                     ),
-                  ]
-                : [
-                    _InfoRow(
-                        icon: Icons.person_rounded,
-                        label: 'Name',
-                        value: name.isEmpty ? 'Not set' : name),
-                    const Divider(color: AppColors.divider, height: 1),
-                    _InfoRow(
-                        icon: Icons.email_rounded,
-                        label: 'Email',
-                        value: email.isEmpty ? 'Not set' : email),
-                    const Divider(color: AppColors.divider, height: 1),
-                    _InfoRow(
-                        icon: Icons.phone_rounded,
-                        label: 'Phone',
-                        value: phone.isEmpty ? 'Not set' : phone),
-                  ],
-          ),
-          const SizedBox(height: 12),
-
-          // Info card — how emergency alerts work
-          _SectionCard(
-            title: 'Emergency Alerts',
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline_rounded,
-                        color: AppColors.primary, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'When a patient emergency is detected, you will receive an in-app message immediately. '
-                        'Make sure your phone number is set above so you also receive an SMS alert.',
-                        style: AppTextStyles.caption,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (phone.isEmpty) ...[
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.warningBg,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning_rounded,
-                          color: AppColors.warning, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'No phone number set — you won\'t receive SMS alerts.',
-                          style: AppTextStyles.caption
-                              .copyWith(color: AppColors.warning),
-                        ),
-                      ),
-                    ],
-                  ),
+            ),
+            const SizedBox(height: 28),
+            // ── Menu list ─────────────────────────────────────────────
+            _GuardianGroup(
+              children: [
+                _GuardianRow(
+                  icon: Icons.manage_accounts_outlined,
+                  label: 'Edit Profile',
+                  onTap: _showEditProfile,
+                ),
+                _GuardianRow(
+                  icon: Icons.help_outline_rounded,
+                  label: 'Help & Support',
+                  onTap: () =>
+                      Navigator.pushNamed(context, AppRouter.helpSupport),
+                ),
+                _GuardianRow(
+                  icon: Icons.rate_review_rounded,
+                  label: 'Send Feedback',
+                  onTap: () => showFeedbackSheet(context),
+                ),
+                _GuardianRow(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Switch Account',
+                  onTap: () => showAccountSwitcherSheet(context),
+                ),
+                _GuardianRow(
+                  icon: Icons.logout_rounded,
+                  label: 'Log Out',
+                  labelColor: AppColors.danger,
+                  onTap: _confirmLogout,
+                  showChevron: false,
+                ),
+                _GuardianRow(
+                  icon: Icons.delete_forever_rounded,
+                  label: 'Delete Account',
+                  labelColor: AppColors.danger,
+                  onTap: _confirmDeleteAccount,
+                  showChevron: false,
+                  last: true,
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Feedback
-          _SectionCard(
-            title: 'Feedback',
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBg,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.star_rounded,
-                      color: AppColors.primary, size: 18),
-                ),
-                title: Text('Rate Cardiva', style: AppTextStyles.body),
-                subtitle: Text('Share your experience with us',
-                    style: AppTextStyles.caption),
-                trailing: const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.accentTint),
-                onTap: () => showFeedbackSheet(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Sign out
-          _SectionCard(
-            title: 'Account',
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.dangerBg,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.logout_rounded,
-                      color: AppColors.danger, size: 18),
-                ),
-                title: Text('Sign Out', style: AppTextStyles.body),
-                subtitle: Text('You will need to sign in again.',
-                    style: AppTextStyles.caption),
-                onTap: _confirmLogout,
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Grouped card container ────────────────────────────────────────────────────
 
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final Widget? trailing;
+class _GuardianGroup extends StatelessWidget {
   final List<Widget> children;
-
-  const _SectionCard({
-    required this.title,
-    required this.children,
-    this.trailing,
-  });
+  const _GuardianGroup({required this.children});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadowLg, blurRadius: 8, offset: Offset(0, 2)),
+              color: AppColors.shadowLg,
+              blurRadius: 12,
+              offset: Offset(0, 3)),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 8, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(title,
-                      style: AppTextStyles.caption.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
-                          letterSpacing: 0.8)),
-                ),
-                if (trailing != null) trailing!,
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: children,
-            ),
-          ),
-        ],
-      ),
+      child: Column(children: children),
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
+// ── Single list row ───────────────────────────────────────────────────────────
+
+class _GuardianRow extends StatelessWidget {
   final IconData icon;
-  final String label, value;
-  const _InfoRow(
-      {required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: AppTextStyles.caption
-                      .copyWith(fontSize: 10, color: AppColors.textSecondary)),
-              Text(value, style: AppTextStyles.body),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EditField extends StatelessWidget {
   final String label;
-  final TextEditingController ctrl;
-  final IconData icon;
-  final TextInputType? keyboardType;
+  final Color? labelColor;
+  final VoidCallback onTap;
+  final bool showChevron;
+  final bool last;
 
-  const _EditField({
-    required this.label,
-    required this.ctrl,
+  const _GuardianRow({
     required this.icon,
-    this.keyboardType,
+    required this.label,
+    required this.onTap,
+    this.labelColor,
+    this.showChevron = true,
+    this.last = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: ctrl,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 18, color: AppColors.primary),
-        filled: true,
-        fillColor: AppColors.bgLight.withValues(alpha: 0.4),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
+    final color = labelColor ?? AppColors.textPrimary;
+    final iconBgColor = labelColor ?? AppColors.primary;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: last
+              ? const BorderRadius.vertical(bottom: Radius.circular(18))
+              : BorderRadius.zero,
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: iconBgColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 19, color: iconBgColor),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppTextStyles.body.copyWith(
+                        color: color, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                if (showChevron)
+                  const Icon(Icons.chevron_right_rounded,
+                      color: AppColors.accentTint, size: 20),
+              ],
+            ),
+          ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 2),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        if (!last)
+          const Divider(height: 1, indent: 70, color: AppColors.divider),
+      ],
+    );
+  }
+}
+
+// ── Edit profile bottom sheet ─────────────────────────────────────────────────
+
+class _EditProfileSheet extends StatefulWidget {
+  final TextEditingController nameCtrl;
+  final TextEditingController phoneCtrl;
+  final Future<void> Function() onSave;
+
+  const _EditProfileSheet({
+    required this.nameCtrl,
+    required this.phoneCtrl,
+    required this.onSave,
+  });
+
+  @override
+  State<_EditProfileSheet> createState() => _EditProfileSheetState();
+}
+
+class _EditProfileSheetState extends State<_EditProfileSheet> {
+  bool _saving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Edit Profile',
+              style: AppTextStyles.h2
+                  .copyWith(fontWeight: FontWeight.w800, fontSize: 20)),
+          const SizedBox(height: 20),
+          TextField(
+            controller: widget.nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Full Name',
+              prefixIcon: const Icon(Icons.person_outline_rounded,
+                  color: AppColors.primary, size: 20),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: widget.phoneCtrl,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: 'Phone Number',
+              prefixIcon: const Icon(Icons.phone_outlined,
+                  color: AppColors.primary, size: 20),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      setState(() => _saving = true);
+                      await widget.onSave();
+                      if (context.mounted) Navigator.pop(context);
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2.5))
+                  : Text(
+                      'Save Changes',
+                      style: AppTextStyles.body.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
