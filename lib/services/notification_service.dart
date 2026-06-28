@@ -30,6 +30,11 @@ class NotificationService {
   /// Foreground callback — set by NotificationsNotifier to receive in-app notifs.
   static void Function(AppNotification)? onNewNotification;
 
+  /// Current user role — updated by app.dart when profile loads.
+  /// Prevents guardians being routed to the patient-only AI analysis screen.
+  static String _currentUserRole = 'patient';
+  static void setCurrentUserRole(String role) => _currentUserRole = role;
+
   // ── Init ─────────────────────────────────────────────────────────────────
 
   static Future<void> initialize() async {
@@ -122,7 +127,10 @@ class NotificationService {
     if (navigator == null) return;
     switch (payload) {
       case _payloadVitalsAi:
-        navigator.pushNamed(AppRouter.vitalsAi);
+        // AI analysis is patient-only — guardians must not be routed here.
+        if (_currentUserRole == 'patient') {
+          navigator.pushNamed(AppRouter.vitalsAi);
+        }
       case _payloadReport:
         navigator.pushNamed(AppRouter.weeklyReport);
     }

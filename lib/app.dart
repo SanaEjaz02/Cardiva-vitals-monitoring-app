@@ -6,7 +6,9 @@ import 'providers/settings_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/vital_provider.dart';
 import 'router/app_router.dart';
+import 'models/user_profile.dart';
 import 'services/background_service.dart';
+import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 
 class CardivApp extends ConsumerStatefulWidget {
@@ -63,6 +65,16 @@ class _CardivAppState extends ConsumerState<CardivApp>
     // and EmergencyTrigger fire immediately from live readings, not just when
     // the AI screen is open.
     ref.listen(healthEventProvider, (_, __) {});
+
+    // Sync the user role into NotificationService so notification taps don't
+    // route guardians to the patient-only AI analysis screen.
+    ref.listen<UserProfile?>(userProvider, (_, profile) {
+      if (profile != null) {
+        NotificationService.setCurrentUserRole(
+          profile.role == UserRole.attendant ? 'attendant' : 'patient',
+        );
+      }
+    });
 
     final themeMode = ref.watch(settingsProvider).themeMode;
 

@@ -1,0 +1,3 @@
+-dontwarn com.android.org.conscrypt.SSLParametersImpl
+-dontwarn org.conscrypt.**
+-keep class org.conscrypt.** { *; }

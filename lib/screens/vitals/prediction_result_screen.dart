@@ -6,6 +6,7 @@ import '../../models/alert_class.dart';
 import '../../models/health_event.dart';
 import '../../models/ml_prediction.dart';
 import '../../models/vital_reading.dart';
+import '../../core/app_navigator.dart';
 import '../../providers/user_provider.dart';
 import '../../router/app_router.dart';
 import '../../theme/app_colors.dart';
@@ -115,11 +116,10 @@ class _PredictionResultScreenState
               onPressed: () {
                 Navigator.pop(ctx);
                 if (!mounted) return;
-                // Clear the analysis stack and land on the guardian chat list.
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  AppRouter.patientChat,
-                  (route) => route.isFirst,
-                );
+                // Switch to the chat tab and pop back to MainNavScreen so
+                // the user can't go back to the analysis/result screens.
+                mainNavTabNotifier.value = 3;
+                Navigator.of(context).popUntil((route) => route.isFirst);
               },
               child: const Text('OK'),
             ),

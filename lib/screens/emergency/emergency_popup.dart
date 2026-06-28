@@ -172,19 +172,12 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       }
     }
 
-    // In-app chat to all linked guardians with a resolved UID.
+    // In-app chat to all linked guardians.
+    // linked_guardians in Firestore is a List<String> of guardian UIDs.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      LinkService.patientSnapshotStream(uid).first.then((snap) async {
-        final guardians = snap?['linked_guardians'] as List? ?? [];
-        var uids = guardians
-            .map((g) => (g as Map)['uid'] as String? ?? '')
-            .where((u) => u.isNotEmpty)
-            .toList();
-        if (uids.isEmpty) {
-          uids = await LinkService.linkedAttendantsStream(uid).first;
-        }
-        for (final aUid in uids) {
+      LinkService.linkedAttendantsStream(uid).first.then((guardianUids) {
+        for (final aUid in guardianUids) {
           ChatService.sendMessage(
             patientUid: uid,
             guardianUid: aUid,
@@ -217,7 +210,10 @@ class _EmergencyPopupState extends State<EmergencyPopup>
     // Signal MainNavScreen to switch to the chat tab BEFORE popping,
     // so the listener fires while the screen is still fully mounted.
     mainNavTabNotifier.value = 3;
-    Navigator.of(context).pop();
+    // popUntil clears the dialog AND any screens pushed on top of MainNavScreen
+    // (e.g. PredictionResultScreen, VitalsAiScreen) so the user lands cleanly
+    // on the chat tab without seeing intermediate screens.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override

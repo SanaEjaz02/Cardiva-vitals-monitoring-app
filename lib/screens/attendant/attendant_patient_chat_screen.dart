@@ -50,13 +50,14 @@ class _AttendantPatientChatScreenState
 
   Future<void> _deleteSelected() async {
     final toDelete = _selectedIds.toList();
-    final msgs = _messages.where((m) => toDelete.contains(m.id)).toList();
     setState(() {
       _selectedIds.clear();
       _messages = _messages.where((m) => !toDelete.contains(m.id)).toList();
     });
-    for (final m in msgs) {
-      ChatService.deleteMessage(m.senderId, m.receiverId, m.id).catchError((_) {});
+    for (final id in toDelete) {
+      // Use the screen's known patientUid + myUid so chatId is always correct,
+      // regardless of whether individual messages have receiverId populated.
+      ChatService.deleteMessage(widget.patientUid, _myUid, id).catchError((_) {});
     }
   }
 
@@ -213,6 +214,7 @@ class _AttendantPatientChatScreenState
       itemBuilder: (_, i) => _MessageBubble(
         msg: _messages[i],
         myUid: _myUid,
+        patientUid: widget.patientUid,
         isSelected: _selectedIds.contains(_messages[i].id),
         isSelectionMode: _inSelectionMode,
         onSelectMessage: _toggleSelect,
@@ -308,6 +310,7 @@ class _AttendantPatientChatScreenState
 class _MessageBubble extends StatelessWidget {
   final ChatMessage msg;
   final String myUid;
+  final String patientUid;
   final bool isSelected;
   final bool isSelectionMode;
   final void Function(String id)? onSelectMessage;
@@ -315,6 +318,7 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.msg,
     required this.myUid,
+    required this.patientUid,
     this.isSelected = false,
     this.isSelectionMode = false,
     this.onSelectMessage,
@@ -391,8 +395,7 @@ class _MessageBubble extends StatelessWidget {
                 onTap: () async {
                   Navigator.pop(context);
                   try {
-                    await ChatService.deleteMessage(
-                        msg.senderId, msg.receiverId, msg.id);
+                    await ChatService.deleteMessage(patientUid, myUid, msg.id);
                   } catch (_) {}
                 },
               ),

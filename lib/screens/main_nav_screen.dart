@@ -59,7 +59,10 @@ class _MainNavScreenState extends ConsumerState<MainNavScreen> {
   void _handleTabRequest() {
     final tab = mainNavTabNotifier.value;
     if (tab != null && mounted) {
-      _switchTab(tab);
+      // jumpToPage avoids animating through intermediate pages (e.g. page 2 =
+      // VitalsAiScreen) when switching programmatically from an emergency popup.
+      _pageController.jumpToPage(tab);
+      setState(() => _currentPage = tab);
       mainNavTabNotifier.value = null;
     }
   }
