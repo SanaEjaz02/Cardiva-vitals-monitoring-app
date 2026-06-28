@@ -242,26 +242,46 @@ class RealtimeDatabaseService {
 
   // ── User profile ─────────────────────────────────────────────────────────
 
-  /// Saves full user profile to /users/{uid}.
-  /// Replaces Firestore saveProfile — no Firestore round-trip, instant write.
-  static Future<void> saveUserProfile(Map<String, dynamic> profileJson) async {
-    final uid = _uid;
-    if (uid == null) {
+  /// Ensures a minimal RTDB stub exists for [uid] without blocking.
+  /// Uses update() so it never overwrites fields already set by saveUserProfile.
+  /// Never awaits a server round-trip — safe to call while RTDB reconnects.
+  static void ensureProfileExists({
+    required String uid,
+    required String email,
+    required String name,
+  }) {
+    if (uid.isEmpty) return;
+    _rtdb.goOnline();
+    _rtdb.ref('users/$uid').update({
+      'id': uid,
+      'email': email,
+      'name': name.isNotEmpty ? name : email.split('@').first,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }).then((_) {
+      debugPrint('[RTDB] ensureProfileExists OK → users/$uid');
+    }).catchError((Object e) {
+      debugPrint('[RTDB] ensureProfileExists ERROR: $e');
+    });
+    debugPrint('[RTDB] ensureProfileExists QUEUED → users/$uid');
+  }
+
+  static void saveUserProfile(Map<String, dynamic> profileJson, {String? uid}) {
+    final resolvedUid = uid ?? _uid;
+    if (resolvedUid == null) {
       // ignore: avoid_print
       print('╔══ [RTDB] saveUserProfile SKIPPED — currentUser is null ══╗');
       return;
     }
-    // Fire-and-forget at SDK level — RTDB queues locally and syncs when
-    // WebSocket connects. Does NOT block the caller on devices where RTDB
-    // WebSocket is slow or temporarily unavailable.
-    _rtdb.ref('users/$uid').set({
+    _rtdb.goOnline();
+    _rtdb.ref('users/$resolvedUid').update({
       ...profileJson,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
     }).then((_) {
-      debugPrint('[RTDB] saveUserProfile OK → users/$uid');
+      debugPrint('[RTDB] saveUserProfile OK → users/$resolvedUid');
     }).catchError((Object e) {
       debugPrint('[RTDB] saveUserProfile ERROR: $e');
     });
+    debugPrint('[RTDB] saveUserProfile QUEUED → users/$resolvedUid');
   }
 
   /// Loads user profile from /users/{uid}.

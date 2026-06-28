@@ -152,6 +152,23 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
     final myUid = ref.read(_authUidProvider).valueOrNull ?? '';
     if (myUid.isEmpty) return;
     try {
+      // 0. RTDB resolved_guardians — fastest path, written when guardian logs in.
+      //    This works even when Firestore WebSocket is unavailable.
+      final rtdbResolved =
+          await RealtimeDatabaseService.watchResolvedGuardians(myUid).first
+              .timeout(const Duration(seconds: 5), onTimeout: () => {});
+      if (rtdbResolved.isNotEmpty) {
+        final fromRtdb = rtdbResolved.entries.map((e) {
+          final g = e.value;
+          return <String, dynamic>{
+            'attendant_uid': e.key,
+            'attendant_name': g['name'] as String? ?? 'Guardian',
+          };
+        }).toList();
+        if (!mounted) return;
+        setState(() => _resolvedLocally = fromRtdb);
+      }
+
       // 1. Manual guardians from SharedPreferences (always available, no network).
       List<dynamic>? rawList;
       final prefs = await SharedPreferences.getInstance();
@@ -793,6 +810,7 @@ class _PatientGuardianChatPageState
   final _scroll = ScrollController();
 
   StreamSubscription<List<ChatMessage>>? _msgSub;
+  Timer? _refreshTimer;
   List<ChatMessage> _messages = [];
   bool _msgLoading = true;
   bool _msgError = false;
@@ -825,10 +843,14 @@ class _PatientGuardianChatPageState
   void initState() {
     super.initState();
     _subscribeMessages();
-    // Force a server-side fetch so messages sent while this page was closed
-    // (e.g. emergency alerts from popup) are pulled into the local cache and
-    // delivered to the stream listener above.
+    // Force a server-side fetch immediately and every 20 seconds.
+    // This ensures messages appear even when the Firestore WebSocket
+    // misses live events (common on restricted Android devices).
     _refreshFromServer();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshFromServer(),
+    );
     ChatService.markRead(widget.myUid, widget.guardianUid).catchError((_) {});
   }
 
@@ -852,6 +874,8 @@ class _PatientGuardianChatPageState
             if (!mounted) return;
             setState(() { _messages = msgs; _msgLoading = false; _msgError = false; });
             if (msgs.isNotEmpty) _scrollToBottom();
+            // Mark any newly-arrived guardian messages as read.
+            ChatService.markRead(widget.myUid, widget.guardianUid).catchError((_) {});
           },
           onError: (_) {
             if (mounted) setState(() { _msgLoading = false; _msgError = true; });
@@ -862,6 +886,7 @@ class _PatientGuardianChatPageState
   @override
   void dispose() {
     _msgSub?.cancel();
+    _refreshTimer?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
@@ -1276,9 +1301,22 @@ class _Bubble extends StatelessWidget {
               ),
             _buildText(),
             const SizedBox(height: 4),
-            Text(time,
-                style:
-                    TextStyle(fontSize: 10, color: _fg().withValues(alpha: 0.65))),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(time,
+                    style: TextStyle(
+                        fontSize: 10, color: _fg().withValues(alpha: 0.65))),
+                if (_isMe) ...[
+                  const SizedBox(width: 3),
+                  _TickIcon(
+                    isSent: !msg.id.startsWith('temp_'),
+                    isRead: msg.isRead,
+                    color: _fg(),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -1387,6 +1425,25 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TickIcon extends StatelessWidget {
+  final bool isSent;
+  final bool isRead;
+  final Color color;
+  const _TickIcon({required this.isSent, required this.isRead, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isSent) {
+      return Icon(Icons.access_time_rounded, size: 11, color: color.withValues(alpha: 0.6));
+    }
+    return Icon(
+      Icons.done_all_rounded,
+      size: 14,
+      color: isRead ? AppColors.primary : color.withValues(alpha: 0.6),
     );
   }
 }

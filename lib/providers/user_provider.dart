@@ -66,7 +66,7 @@ class UserNotifier extends StateNotifier<UserProfile?> {
         if (fs != null) {
           data = <String, dynamic>{...fs.profile, 'id': uid, 'role': fs.role};
           // Backfill RTDB so the next login is instant from cache.
-          RealtimeDatabaseService.saveUserProfile(data).catchError((_) {});
+          RealtimeDatabaseService.saveUserProfile(data);
         }
       }
 
@@ -77,7 +77,7 @@ class UserNotifier extends StateNotifier<UserProfile?> {
       await prefs.setString('user_profile_$uid', jsonEncode(data));
 
       // Keep Firestore in sync so email-based lookups work for ALL users.
-      FirestoreService.saveProfile(data).catchError((_) {});
+      FirestoreService.saveProfile(data, uid: uid).catchError((_) {});
 
       if (profile.role == UserRole.patient) {
         _resolvePatientGuardians(uid, data).catchError((_) {});

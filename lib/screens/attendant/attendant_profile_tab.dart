@@ -7,6 +7,7 @@ import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../auth/auth_screen.dart';
+import '../profile/feedback_sheet.dart';
 
 class AttendantProfileTab extends ConsumerStatefulWidget {
   const AttendantProfileTab({super.key});
@@ -56,7 +57,7 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
         ref.read(userProvider.notifier).updateProfile(updated);
         // Both saves are fire-and-forget — UI doesn't wait for server.
         FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
-        RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
+        RealtimeDatabaseService.saveUserProfile(updated.toJson());
         AuthService.currentUser?.updateDisplayName(name).catchError((_) {});
       }
       if (mounted) setState(() => _editMode = false);
@@ -292,6 +293,33 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
                   ),
                 ),
               ],
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Feedback
+          _SectionCard(
+            title: 'Feedback',
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.star_rounded,
+                      color: AppColors.primary, size: 18),
+                ),
+                title: Text('Rate Cardiva', style: AppTextStyles.body),
+                subtitle: Text('Share your experience with us',
+                    style: AppTextStyles.caption),
+                trailing: const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.accentTint),
+                onTap: () => showFeedbackSheet(context),
+              ),
             ],
           ),
           const SizedBox(height: 12),

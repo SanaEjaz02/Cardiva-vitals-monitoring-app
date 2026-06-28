@@ -69,7 +69,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
           if (updated != null) {
             notifier.updateProfile(updated);
             FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
-            RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
+            RealtimeDatabaseService.saveUserProfile(updated.toJson());
             final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
             await p.setString('user_profile_$uid', jsonEncode(updated.toJson()));
             if (path != null) {
@@ -79,7 +79,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
                   notifier.updateProfile(withPhoto);
                   FirestoreService.saveProfile(withPhoto.toJson())
                       .catchError((_) {});
-                  RealtimeDatabaseService.saveUserProfile(withPhoto.toJson()).catchError((_) {});
+                  RealtimeDatabaseService.saveUserProfile(withPhoto.toJson());
                   p.setString(
                       'user_profile_$uid', jsonEncode(withPhoto.toJson()));
                 }

@@ -32,6 +32,7 @@ class _AttendantPatientChatScreenState
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   StreamSubscription<List<ChatMessage>>? _msgSub;
+  Timer? _refreshTimer;
   List<ChatMessage> _messages = [];
   bool _msgLoading = true;
   bool _msgError = false;
@@ -67,6 +68,10 @@ class _AttendantPatientChatScreenState
     super.initState();
     _subscribeMessages();
     _refreshFromServer();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshFromServer(),
+    );
     ChatService.markRead(_myUid, widget.patientUid).catchError((_) {});
   }
 
@@ -90,6 +95,7 @@ class _AttendantPatientChatScreenState
             if (!mounted) return;
             setState(() { _messages = msgs; _msgLoading = false; _msgError = false; });
             if (msgs.isNotEmpty) _scrollToBottom();
+            ChatService.markRead(_myUid, widget.patientUid).catchError((_) {});
           },
           onError: (_) {
             if (mounted) setState(() { _msgLoading = false; _msgError = true; });
@@ -100,6 +106,7 @@ class _AttendantPatientChatScreenState
   @override
   void dispose() {
     _msgSub?.cancel();
+    _refreshTimer?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
@@ -502,10 +509,20 @@ class _MessageBubble extends StatelessWidget {
               ),
             _buildText(),
             const SizedBox(height: 4),
-            Text(time,
-                style: TextStyle(
-                    fontSize: 10,
-                    color: _textColor().withValues(alpha: 0.65))),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(time,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: _textColor().withValues(alpha: 0.65))),
+                if (_isMe) ...[
+                  const SizedBox(width: 3),
+                  _TickIcon(isSent: !msg.id.startsWith('temp_'), isRead: msg.isRead,
+                      color: _textColor()),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -606,6 +623,26 @@ class _InputBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Single tick = sending, double grey = sent, double primary = read
+class _TickIcon extends StatelessWidget {
+  final bool isSent;
+  final bool isRead;
+  final Color color;
+  const _TickIcon({required this.isSent, required this.isRead, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isSent) {
+      return Icon(Icons.access_time_rounded, size: 11, color: color.withValues(alpha: 0.6));
+    }
+    return Icon(
+      Icons.done_all_rounded,
+      size: 14,
+      color: isRead ? AppColors.primary : color.withValues(alpha: 0.6),
     );
   }
 }

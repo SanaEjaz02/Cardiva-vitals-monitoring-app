@@ -48,4 +48,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Conscrypt: pure-Java TLS provider — fixes Firestore gRPC on Infinix XOS
+    // where the system ProviderInstaller (GMS) is blocked by the OS.
+    implementation("org.conscrypt:conscrypt-android:2.5.2")
 }

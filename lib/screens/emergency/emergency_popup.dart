@@ -159,9 +159,20 @@ class _EmergencyPopupState extends State<EmergencyPopup>
         'Needs immediate assistance. Please respond now.\n'
         '— Sent by Cardiva Health Monitor$locationLine';
 
-    // Send in-app emergency alert via Cardiva Chat to all linked guardians.
-    // Read UIDs from the patient-owned snapshot first (includes manually-added
-    // guardians whose UIDs were resolved). Fall back to linked_guardians array.
+    // SMS to all contacts with a phone number.
+    for (final c in _contacts) {
+      if (c.phone.isNotEmpty) {
+        final smsUri = Uri(
+          scheme: 'sms',
+          path: c.phone,
+          queryParameters: {'body': message},
+        );
+        launchUrl(smsUri, mode: LaunchMode.externalApplication)
+            .catchError((_) => false);
+      }
+    }
+
+    // In-app chat to all linked guardians with a resolved UID.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       LinkService.patientSnapshotStream(uid).first.then((snap) async {

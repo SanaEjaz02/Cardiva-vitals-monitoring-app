@@ -32,6 +32,8 @@ class LinkService {
     required String patientName,
     required String attendantUid,
     required String attendantName,
+    String attendantEmail = '',
+    String attendantPhone = '',
   }) async {
     // Firestore — kept for chat queries (linked_guardians array-contains).
     try {
@@ -56,6 +58,18 @@ class LinkService {
       guardianUid: attendantUid,
       patientUid: patientUid,
     ).catchError((_) {});
+
+    // Write to resolved_guardians so the patient chat screen can find the
+    // guardian uid even when Firestore is slow or email_index hasn't synced.
+    if (patientUid.isNotEmpty && attendantUid.isNotEmpty) {
+      RealtimeDatabaseService.saveResolvedGuardian(
+        patientUid: patientUid,
+        guardianUid: attendantUid,
+        name: attendantName,
+        email: attendantEmail,
+        phone: attendantPhone,
+      ).catchError((_) {});
+    }
   }
 
   /// Remove link between patient and guardian.
@@ -498,10 +512,11 @@ class LinkService {
           patientName:   patientName,
         ).catchError((_) {});
         linkAttendantToPatient(
-          patientUid:   patientUid,
-          patientName:  patientName,
-          attendantUid: guardianUid,
-          attendantName: '',
+          patientUid:     patientUid,
+          patientName:    patientName,
+          attendantUid:   guardianUid,
+          attendantName:  '',
+          attendantEmail: email,
         ).catchError((_) {});
       }
     } catch (_) {}
@@ -526,10 +541,11 @@ class LinkService {
           patientName:   patientName,
         ).catchError((_) {});
         linkAttendantToPatient(
-          patientUid:   doc.id,
-          patientName:  patientName,
-          attendantUid: guardianUid,
-          attendantName: '',
+          patientUid:     doc.id,
+          patientName:    patientName,
+          attendantUid:   guardianUid,
+          attendantName:  '',
+          attendantEmail: email,
         ).catchError((_) {});
       }
     } catch (_) {}

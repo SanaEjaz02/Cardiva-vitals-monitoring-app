@@ -28,10 +28,10 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   late AnimationController _pulseCtrl;
 
   // ── Vitals (band / manual) ────────────────────────────────────────────────
-  double _hr = 72;
-  double _spo2 = 98;
-  double _hrv = 55;
-  double _rr = 16;
+  double _hr = 60;
+  double _spo2 = 95;
+  double _hrv = 50;
+  double _rr = 12;
   ActivityType _activity = ActivityType.resting;
 
   // ── Accelerometer ─────────────────────────────────────────────────────────
@@ -82,6 +82,17 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
           _rr = reading.respirationRate.clamp(3, 35);
           _activity = reading.activity;
         });
+      } else {
+        // Band not connected — use the last dashboard analysis values
+        final last = ref.read(lastAnalysisProvider);
+        if (last != null && mounted) {
+          setState(() {
+            _hr = last.heartRate.clamp(30, 220);
+            _spo2 = last.spo2.clamp(80, 100);
+            _hrv = last.hrv.clamp(5, 100);
+            _rr = last.respirationRate.clamp(3, 35);
+          });
+        }
       }
 
       _startCountdownTicker();

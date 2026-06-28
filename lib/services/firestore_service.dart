@@ -50,14 +50,14 @@ class FirestoreService {
   // ── Role ─────────────────────────────────────────────────────────────────
 
   /// Writes role into patients/ or guardians/ depending on role value.
-  static Future<void> saveRole(String role) async {
+  static Future<void> saveRole(String role, {String? uid}) async {
     _cachedRole = role;
-    final uid = _uid;
-    if (uid == null) return;
+    final resolvedUid = uid ?? _uid;
+    if (resolvedUid == null) return;
     try {
       await _db
           .collection(_collectionFor(role))
-          .doc(uid)
+          .doc(resolvedUid)
           .set({'role': role}, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[Firestore] saveRole ERROR: $e');
@@ -97,9 +97,10 @@ class FirestoreService {
   /// directly in the Firebase Console without clicking into sub-objects.
   ///
   /// Throws on Firestore failure — callers must handle the error.
-  static Future<void> saveProfile(Map<String, dynamic> profileJson) async {
-    final uid = _uid;
-    if (uid == null) return;
+  static Future<void> saveProfile(Map<String, dynamic> profileJson,
+      {String? uid}) async {
+    final resolvedUid = uid ?? _uid ?? (profileJson['id'] as String?);
+    if (resolvedUid == null || resolvedUid.isEmpty) return;
 
     final roleStr = ((profileJson['role'] as String?) ?? _cachedRole).toLowerCase();
     _cachedRole = roleStr;
@@ -109,7 +110,7 @@ class FirestoreService {
     // Guardian: only 3 fields + role. Patient: full flat profile (including band_id).
     final Map<String, dynamic> toSave = isGuardian
         ? {
-            'id': uid,
+            'id': resolvedUid,
             'name': profileJson['name'] ?? '',
             'email': profileJson['email'] ?? '',
             'phone': profileJson['phone'] ?? '',
@@ -118,15 +119,15 @@ class FirestoreService {
           }
         : Map<String, dynamic>.from(profileJson);
 
-    debugPrint('[Firestore] saveProfile → $collection/$uid');
-    await _db.collection(collection).doc(uid).set(toSave, SetOptions(merge: true));
-    debugPrint('[Firestore] ✅ saveProfile confirmed by server: $collection/$uid');
+    debugPrint('[Firestore] saveProfile → $collection/$resolvedUid');
+    await _db.collection(collection).doc(resolvedUid).set(toSave, SetOptions(merge: true));
+    debugPrint('[Firestore] ✅ saveProfile confirmed by server: $collection/$resolvedUid');
 
     if (isGuardian) {
       final email = (profileJson['email'] as String? ?? '').trim();
       if (email.isNotEmpty) {
         LinkService.autoLinkGuardianToPatients(
-          guardianUid: uid,
+          guardianUid: resolvedUid,
           guardianEmail: email,
         ).catchError((_) {});
       }

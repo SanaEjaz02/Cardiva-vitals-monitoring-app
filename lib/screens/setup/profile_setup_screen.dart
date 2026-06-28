@@ -14,7 +14,14 @@ import '../../router/app_router.dart';
 import '../attendant/attendant_main_screen.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
-  const ProfileSetupScreen({super.key});
+  /// Passed explicitly from auth_screen so the role is never lost
+  /// even if the Riverpod state gets reset between screens.
+  final UserRole? role;
+  /// Passed explicitly so uid is always correct (Infinix auth delay workaround).
+  final String? uid;
+  final String? email;
+
+  const ProfileSetupScreen({super.key, this.role, this.uid, this.email});
 
   @override
   ConsumerState<ProfileSetupScreen> createState() => _ProfileSetupScreenState();
@@ -32,11 +39,19 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
   bool _saving = false;
 
-  bool get _isGuardian =>
-      ref.read(userProvider)?.role == UserRole.attendant;
+  // Cached at initState so Riverpod state changes can never alter the role.
+  late final UserRole _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _role = widget.role ?? UserRole.patient;
+    debugPrint('[ProfileSetup] initState role=${_role.name} widget.role=${widget.role?.name}');
+  }
+
+  bool get _isGuardian => _role == UserRole.attendant;
 
   bool get _isValid {
-    if (_isGuardian) return _nameCtrl.text.isNotEmpty;
     return _nameCtrl.text.isNotEmpty &&
         _dob != null &&
         _gender != null &&
@@ -49,46 +64,66 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     setState(() => _saving = true);
     try {
       final firebaseUser = FirebaseAuth.instance.currentUser;
-      final uid = firebaseUser?.uid ?? DateTime.now().millisecondsSinceEpoch.toString();
+      // Prefer: Firebase Auth uid → widget param → Riverpod id.
+      // On Infinix, Firebase Auth currentUser can be null briefly after sign-up.
+      final riverpodId = ref.read(userProvider)?.id;
+      final uid = firebaseUser?.uid
+          ?? widget.uid
+          ?? riverpodId
+          ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final email = firebaseUser?.email
+          ?? widget.email
+          ?? ref.read(userProvider)?.email
+          ?? '';
       final name = _nameCtrl.text.trim();
-
-      final existingRole = ref.read(userProvider)?.role ?? UserRole.patient;
-      final isGuardian = existingRole == UserRole.attendant;
+      debugPrint('[ProfileSetup] _submit uid=$uid role=${_role.name}');
 
       final profile = UserProfile(
         id: uid,
         name: name,
-        email: firebaseUser?.email ?? '',
+        email: email,
         phone: _phoneCtrl.text.trim(),
-        dateOfBirth: isGuardian ? DateTime(1990) : _dob!,
-        gender: isGuardian ? '' : (_gender ?? ''),
-        bloodGroup: isGuardian ? '' : (_bloodType ?? ''),
-        heightCm: isGuardian ? 0 : (double.tryParse(_heightCtrl.text) ?? 170.0),
-        weightKg: isGuardian ? 0 : (double.tryParse(_weightCtrl.text) ?? 70.0),
-        role: existingRole,
+        dateOfBirth: _dob!,
+        gender: _gender ?? '',
+        bloodGroup: _bloodType ?? '',
+        heightCm: double.tryParse(_heightCtrl.text) ?? 170.0,
+        weightKg: double.tryParse(_weightCtrl.text) ?? 70.0,
+        role: _role,
       );
-      // Display name — fire-and-forget, no reason to block navigation.
+
       if (firebaseUser?.displayName != name) {
         firebaseUser?.updateDisplayName(name).catchError((_) {});
       }
 
-      // In-memory state — instant.
       ref.read(userProvider.notifier).setUser(profile);
 
-      // Local cache — fast, ensures offline re-open works.
       final profileJson = profile.toJson();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_profile_$uid', jsonEncode(profileJson));
 
-      // RTDB — primary fast store (push-based, no round-trip).
-      RealtimeDatabaseService.saveUserProfile(profileJson).catchError((_) {});
-      // Firestore — needed for email-based guardian lookups and emergency SMS.
-      // Fire-and-forget: does NOT block navigation.
-      FirestoreService.saveProfile(profileJson).catchError((_) {});
+      // RTDB — pass uid explicitly (auth can be null on Infinix).
+      RealtimeDatabaseService.saveUserProfile(profileJson, uid: uid);
+      if (email.isNotEmpty) {
+        RealtimeDatabaseService.saveEmailIndex(email).catchError((_) {});
+      }
+
+      // Firestore — AWAIT so the write commits before we navigate.
+      // This is safe with offline persistence — the SDK writes to local disk
+      // first and resolves immediately; server sync happens in background.
+      try {
+        await FirestoreService.saveProfile(profileJson, uid: uid)
+            .timeout(const Duration(seconds: 8));
+        debugPrint('[ProfileSetup] Firestore ✅ saved for $uid');
+      } catch (e) {
+        // Log the error but do NOT block navigation — offline persistence
+        // will retry the write when the connection is restored.
+        debugPrint('[ProfileSetup] Firestore ERROR (will retry offline): $e');
+      }
 
       if (!mounted) return;
 
-      if (existingRole == UserRole.attendant) {
+      debugPrint('[ProfileSetup] navigating → role=${_role.name}');
+      if (_role == UserRole.attendant) {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const AttendantMainScreen()),
@@ -124,7 +159,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isGuardian = ref.watch(userProvider)?.role == UserRole.attendant;
+    final isGuardian = _isGuardian;
     return Scaffold(
       backgroundColor: AppColors.bgWhite,
       body: SafeArea(
@@ -142,7 +177,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     child: Center(
                       child: StepIndicator(
                         current: 1,
-                        total: isGuardian ? 2 : 3,
+                        total: 3,
                       ),
                     ),
                   ),
@@ -160,13 +195,13 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isGuardian ? 'Set up your profile' : 'Tell us about yourself',
+                        'Tell us about yourself',
                         style: AppTextStyles.h1,
                       ),
                       const SizedBox(height: 6),
                       Text(
                         isGuardian
-                            ? 'Add your name and phone number so patients can identify you and you receive SMS alerts.'
+                            ? 'This helps personalize your profile. Your phone number is needed for emergency SMS alerts.'
                             : 'This helps us personalize your health thresholds.',
                         style: AppTextStyles.body
                             .copyWith(color: AppColors.textSecondary),
@@ -200,23 +235,31 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                             (v == null || v.isEmpty) ? 'Required' : null,
                       ),
                       const SizedBox(height: 12),
-                      // Guardian: phone only. Patient: full vitals form.
-                      if (isGuardian) ...[
-                        TextFormField(
-                          controller: _phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            hintText: 'Phone number (e.g. 3001234567)',
-                            prefixText: '+92 ',
-                          ),
+                      // Phone — required for guardian, optional for patient
+                      TextFormField(
+                        controller: _phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          hintText: 'Phone number (e.g. 3001234567)',
+                          prefixText: '+92 ',
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Required for emergency SMS alerts',
-                          style: AppTextStyles.caption
-                              .copyWith(color: AppColors.textSecondary),
-                        ),
-                      ] else ...[
+                        validator: isGuardian
+                            ? (v) => (v == null || v.trim().isEmpty)
+                                ? 'Phone is required for emergency alerts'
+                                : null
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        isGuardian
+                            ? 'Required for emergency SMS alerts'
+                            : 'Optional — used for emergency contacts',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      // DOB, gender, vitals — same for both roles
+                      ...[
                         GestureDetector(
                           onTap: _pickDob,
                           child: Container(

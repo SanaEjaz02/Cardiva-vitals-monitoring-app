@@ -16,6 +16,11 @@ import '../setup/profile_setup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'role_selection_screen.dart';
 
+/// Provider for saved accounts — auto-refreshed each time auth screen builds.
+final _savedAccountsProvider =
+    FutureProvider.autoDispose<List<SavedAccount>>((_) =>
+        AccountSwitcherService.getSavedAccounts());
+
 // Returns 0 (empty) to 5 (very strong)
 int _calcStrength(String p) {
   if (p.isEmpty) return 0;
@@ -165,18 +170,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         cred.user?.updateDisplayName(_registerName.text.trim()).catchError((_) {});
 
         final roleStr = _registerRole == UserRole.attendant ? 'attendant' : 'patient';
-        // RTDB — primary fast store.
+        final credUid = cred.user?.uid;
+        // RTDB — pass uid explicitly so it isn't read from currentUser,
+        // which can be null briefly on some devices right after sign-up.
         RealtimeDatabaseService.saveUserProfile({
-          'id': cred.user?.uid ?? '',
+          'id': credUid ?? '',
           'role': roleStr,
           'name': _registerName.text.trim(),
           'email': cred.user?.email ?? '',
-        }).catchError((_) {});
-        // Firestore — needed for email-based guardian lookups and emergency SMS.
-        FirestoreService.saveRole(roleStr).catchError((_) {});
+        }, uid: credUid);
+        // Firestore — pass uid explicitly (same reason as RTDB above).
+        FirestoreService.saveRole(roleStr, uid: credUid).catchError((_) {});
+        // RTDB email index so the other party can look this user up by email.
+        if ((cred.user?.email ?? '').isNotEmpty) {
+          RealtimeDatabaseService.saveEmailIndex(cred.user!.email!)
+              .catchError((_) {});
+        }
 
-        // Seed the provider so ProfileSetupScreen reads the correct role
-        // without an extra round-trip.
+        // Seed the provider so ProfileSetupScreen reads the correct role.
         final stub = UserProfile(
           id: cred.user?.uid ?? '',
           name: _registerName.text.trim(),
@@ -192,9 +203,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
         ref.read(userProvider.notifier).setUser(stub);
 
         if (!mounted) return;
+        // Pass uid, email, and role explicitly so ProfileSetupScreen
+        // never relies on Riverpod state that may be lost (Infinix delay).
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+          MaterialPageRoute(
+            builder: (_) => ProfileSetupScreen(
+              role: _registerRole,
+              uid: credUid,
+              email: cred.user?.email,
+            ),
+          ),
         );
         return;
       }
@@ -333,6 +352,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
                 ],
               ),
               const SizedBox(height: 32),
+              // Saved accounts switcher — shown only on login tab when accounts exist
+              if (_isLogin)
+                _SavedAccountsRow(
+                  onSelect: (account) {
+                    _loginEmail.text = account.email;
+                    _toggle(true);
+                    setState(() {});
+                  },
+                ),
               // Login / Register toggle pill
               _TogglePill(isLogin: _isLogin, onToggle: _toggle),
               const SizedBox(height: 24),
@@ -925,6 +953,95 @@ class _RoleChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Saved accounts switcher ───────────────────────────────────────────────────
+
+class _SavedAccountsRow extends ConsumerWidget {
+  final void Function(SavedAccount) onSelect;
+  const _SavedAccountsRow({required this.onSelect});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(_savedAccountsProvider);
+    final accounts = async.valueOrNull ?? [];
+    if (accounts.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Switch account', style: AppTextStyles.caption),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 76,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: accounts.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) {
+              final a = accounts[i];
+              return GestureDetector(
+                onTap: () => onSelect(a),
+                onLongPress: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Remove account?'),
+                      content: Text('Remove ${a.email} from saved accounts?'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Remove',
+                                style: TextStyle(color: AppColors.danger))),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    await AccountSwitcherService.removeAccount(a.uid);
+                    ref.invalidate(_savedAccountsProvider);
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: a.isGuardian
+                          ? AppColors.success.withValues(alpha: 0.15)
+                          : AppColors.primaryBg,
+                      child: Text(
+                        a.initials,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: a.isGuardian
+                              ? AppColors.success
+                              : AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      a.name.isEmpty
+                          ? a.email.split('@').first
+                          : a.name.split(' ').first,
+                      style: AppTextStyles.caption.copyWith(fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }

@@ -35,7 +35,7 @@ class BackgroundService {
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: _onServiceStart,
-        autoStart: true,
+        autoStart: false,
         isForegroundMode: true,
         notificationChannelId: _channelId,
         initialNotificationTitle: 'Cardiva Health Monitor',

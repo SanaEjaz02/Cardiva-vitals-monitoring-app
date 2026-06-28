@@ -9,6 +9,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../attendant/attendant_main_screen.dart';
 import '../main_nav_screen.dart';
+import '../setup/profile_setup_screen.dart';
 
 class RoleSelectionScreen extends ConsumerStatefulWidget {
   /// If true, this is shown after initial registration (go to profile setup next).
@@ -44,18 +45,21 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
     setState(() => _saving = true);
 
     final roleStr = _selected == UserRole.attendant ? 'attendant' : 'patient';
+    final fbUser = FirebaseAuth.instance.currentUser;
+    final fbUid = fbUser?.uid;
+    final fbEmail = fbUser?.email ?? '';
+
     final profile = ref.read(userProvider);
     if (profile != null) {
       final updated = profile.copyWith(role: _selected);
       ref.read(userProvider.notifier).updateProfile(updated);
-      RealtimeDatabaseService.saveUserProfile(updated.toJson()).catchError((_) {});
-      FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
+      RealtimeDatabaseService.saveUserProfile(updated.toJson(), uid: fbUid);
+      FirestoreService.saveProfile(updated.toJson(), uid: fbUid).catchError((_) {});
     } else {
-      final fbUser = FirebaseAuth.instance.currentUser;
       final stub = UserProfile(
-        id: fbUser?.uid ?? '',
+        id: fbUid ?? '',
         name: fbUser?.displayName ?? '',
-        email: fbUser?.email ?? '',
+        email: fbEmail,
         phone: '',
         dateOfBirth: DateTime(1990),
         gender: '',
@@ -65,16 +69,24 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
         role: _selected!,
       );
       ref.read(userProvider.notifier).setUser(stub);
-      RealtimeDatabaseService.saveUserProfile(stub.toJson()).catchError((_) {});
-      FirestoreService.saveRole(roleStr).catchError((_) {});
+      RealtimeDatabaseService.saveUserProfile(stub.toJson(), uid: fbUid);
+      FirestoreService.saveRole(roleStr, uid: fbUid).catchError((_) {});
     }
 
     if (!mounted) return;
 
     if (_selected == UserRole.attendant) {
       if (widget.isNewUser) {
-        // New guardians go through profile setup first to collect name + phone
-        Navigator.pushReplacementNamed(context, '/setup/profile');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileSetupScreen(
+              role: _selected,
+              uid: fbUid,
+              email: fbEmail,
+            ),
+          ),
+        );
       } else {
         Navigator.pushAndRemoveUntil(
           context,
@@ -83,7 +95,16 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
         );
       }
     } else if (widget.isNewUser) {
-      Navigator.pushReplacementNamed(context, '/setup/profile');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileSetupScreen(
+            role: _selected,
+            uid: fbUid,
+            email: fbEmail,
+          ),
+        ),
+      );
     } else {
       Navigator.pushAndRemoveUntil(
         context,
