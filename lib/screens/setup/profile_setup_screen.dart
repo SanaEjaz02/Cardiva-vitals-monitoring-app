@@ -52,6 +52,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   bool get _isGuardian => _role == UserRole.attendant;
 
   bool get _isValid {
+    if (_isGuardian) return _nameCtrl.text.isNotEmpty;
     return _nameCtrl.text.isNotEmpty &&
         _dob != null &&
         _gender != null &&
@@ -83,11 +84,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
         name: name,
         email: email,
         phone: _phoneCtrl.text.trim(),
-        dateOfBirth: _dob!,
-        gender: _gender ?? '',
-        bloodGroup: _bloodType ?? '',
-        heightCm: double.tryParse(_heightCtrl.text) ?? 170.0,
-        weightKg: double.tryParse(_weightCtrl.text) ?? 70.0,
+        dateOfBirth: _isGuardian ? DateTime(1990) : _dob!,
+        gender: _isGuardian ? '' : (_gender ?? ''),
+        bloodGroup: _isGuardian ? '' : (_bloodType ?? ''),
+        heightCm: _isGuardian ? 0 : (double.tryParse(_heightCtrl.text) ?? 170.0),
+        weightKg: _isGuardian ? 0 : (double.tryParse(_weightCtrl.text) ?? 70.0),
         role: _role,
       );
 
@@ -175,10 +176,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   ),
                   Expanded(
                     child: Center(
-                      child: StepIndicator(
-                        current: 1,
-                        total: 3,
-                      ),
+                      child: isGuardian
+                        ? const SizedBox.shrink()
+                        : StepIndicator(current: 1, total: 3),
                     ),
                   ),
                   const SizedBox(width: 40),
@@ -214,8 +214,15 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                             (v == null || v.isEmpty) ? 'Required' : null,
                       ),
                       const SizedBox(height: 12),
-                      // DOB, gender, vitals — same for both roles
-                      ...[
+                      // Phone — shown for both roles
+                      TextFormField(
+                        controller: _phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(hintText: 'Phone number (optional)'),
+                      ),
+                      // Health fields — patients only
+                      if (!isGuardian) ...[
+                        const SizedBox(height: 12),
                         GestureDetector(
                           onTap: _pickDob,
                           child: Container(

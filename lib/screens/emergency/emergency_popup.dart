@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_navigator.dart';
-import '../../models/chat_message.dart';
-import '../../services/chat_service.dart';
+import '../../engine/emergency_trigger.dart';
+import '../../engine/health_status_engine.dart';
+import '../../models/vital_reading.dart';
+import '../../providers/user_provider.dart';
+import '../../providers/vital_provider.dart';
 import '../../services/link_service.dart';
-import '../../services/location_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
-class EmergencyPopup extends StatefulWidget {
+class EmergencyPopup extends ConsumerStatefulWidget {
   final String triggerType; // fall | lowSpo2 | highHr | manual
   const EmergencyPopup({
     super.key,
@@ -45,16 +48,15 @@ class EmergencyPopup extends StatefulWidget {
   }
 
   @override
-  State<EmergencyPopup> createState() => _EmergencyPopupState();
+  ConsumerState<EmergencyPopup> createState() => _EmergencyPopupState();
 }
 
-class _EmergencyPopupState extends State<EmergencyPopup>
+class _EmergencyPopupState extends ConsumerState<EmergencyPopup>
     with TickerProviderStateMixin {
   int _countdown = 25;
   Timer? _timer;
   bool _alertSent = false;
   bool _show1122 = false;
-  String? _mapsLink; // fetched during countdown
 
   // Loaded from SharedPreferences (user-scoped)
   List<_AlertContact> _contacts = [];
@@ -89,18 +91,7 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       return ctrl;
     });
     _loadContacts();
-    _fetchLocation();
     _startCountdown();
-  }
-
-  Future<void> _fetchLocation() async {
-    try {
-      final pos = await LocationService.getCurrentPosition();
-      if (mounted) {
-        _mapsLink =
-            'https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
-      }
-    } catch (_) {}
   }
 
   Future<void> _loadContacts() async {
@@ -145,50 +136,33 @@ class _EmergencyPopupState extends State<EmergencyPopup>
       _countdown = 0;
     });
 
-    final userName =
+    // Build a HealthEvent from the current live reading (or safe defaults).
+    // fallDetected = true signals manual SOS / critical condition.
+    final liveReading = ref.read(latestReadingProvider).valueOrNull;
+    final reading = VitalReading(
+      heartRate: liveReading?.heartRate ?? 75,
+      spO2: liveReading?.spO2 ?? 98,
+      hrv: liveReading?.hrv ?? 40,
+      respirationRate: liveReading?.respirationRate ?? 16,
+      activity: liveReading?.activity ?? ActivityType.resting,
+      fallDetected: widget.triggerType == 'fall' || liveReading?.fallDetected == true,
+    );
+    final event = HealthStatusEngine.analyze(reading);
+
+    final user = ref.read(userProvider);
+    final userName = user?.name ??
         FirebaseAuth.instance.currentUser?.displayName ?? 'Patient';
-    final typeLabel = widget.triggerType == 'fall'
-        ? 'FALL DETECTED'
-        : widget.triggerType == 'manual'
-            ? 'SOS ACTIVATED'
-            : 'CRITICAL VITALS';
-    final locationLine =
-        _mapsLink != null ? '\n📍 $_mapsLink' : '';
-    final message = '🚨 CARDIVA EMERGENCY — $typeLabel\n'
-        'Patient: $userName\n'
-        'Needs immediate assistance. Please respond now.\n'
-        '— Sent by Cardiva Health Monitor$locationLine';
 
-    // SMS to all contacts with a phone number.
-    for (final c in _contacts) {
-      if (c.phone.isNotEmpty) {
-        final smsUri = Uri(
-          scheme: 'sms',
-          path: c.phone,
-          queryParameters: {'body': message},
-        );
-        launchUrl(smsUri, mode: LaunchMode.externalApplication)
-            .catchError((_) => false);
-      }
-    }
-
-    // In-app chat to all linked guardians.
-    // linked_guardians in Firestore is a List<String> of guardian UIDs.
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      LinkService.linkedAttendantsStream(uid).first.then((guardianUids) {
-        for (final aUid in guardianUids) {
-          ChatService.sendMessage(
-            patientUid: uid,
-            guardianUid: aUid,
-            senderUid: uid,
-            senderName: userName,
-            text: message,
-            type: MessageType.emergency,
-          ).catchError((_) {});
-        }
-      }).catchError((_) {});
-    }
+    // Delegates SMS, in-app chat, RTDB push, and local notification to
+    // EmergencyTrigger — same path as the AI analysis emergency flow.
+    EmergencyTrigger.handle(
+      event: event,
+      userName: userName,
+      userPhone: user?.phone ?? '',
+      userId: user?.id ??
+          FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+      force: true, // manual SOS always sends regardless of cooldown
+    ).catchError((_) {});
 
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _show1122 = true);

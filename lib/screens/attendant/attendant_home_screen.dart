@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../models/in_app_message.dart';
 import '../../providers/user_provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/local_chat_db.dart';
 import '../../services/messaging_service.dart';
 import '../../theme/app_text_styles.dart';
 import '../auth/auth_screen.dart';
@@ -47,6 +48,7 @@ class _AttendantHomeScreenState extends ConsumerState<AttendantHomeScreen> {
   }
 
   Future<void> _signOut() async {
+    await LocalChatDb.instance.clearAll();
     await AuthService.signOut();
     if (!mounted) return;
     ref.read(userProvider.notifier).clearUser();

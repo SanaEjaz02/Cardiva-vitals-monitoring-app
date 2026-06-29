@@ -256,7 +256,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   // ── Messaging ──────────────────────────────────────────────────────────
 
   Future<void> _sendMessage([String? preset]) async {
-    if (_current == null) _newSession();
+    if (_current == null) _createSession();
 
     final text = preset ?? _inputCtrl.text.trim();
     if (text.isEmpty || _isTyping) return;

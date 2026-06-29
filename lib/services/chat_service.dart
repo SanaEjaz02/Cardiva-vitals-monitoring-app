@@ -43,6 +43,8 @@ class ChatService {
     required String senderName,
     required String text,
     MessageType type = MessageType.text,
+    String? fileUrl,
+    String? fileName,
   }) async {
     final cid = chatId(patientUid, guardianUid);
     final receiverUid = senderUid == patientUid ? guardianUid : patientUid;
@@ -59,6 +61,8 @@ class ChatService {
       content: text,
       timestamp: now,
       type: type,
+      fileUrl: fileUrl,
+      fileName: fileName,
     );
 
     // Step 1: Create/update the chat document FIRST.
@@ -71,7 +75,11 @@ class ChatService {
         'patientId': patientUid,
         'guardianId': guardianUid,
         'participants': [patientUid, guardianUid],
-        'lastMessage': text,
+        'lastMessage': type == MessageType.image
+            ? '📷 Image'
+            : type == MessageType.document
+                ? '📎 ${fileName ?? 'File'}'
+                : text,
         'lastMessageTime': Timestamp.fromDate(now),
         'lastSenderId': senderUid,
         'lastSenderName': senderName,

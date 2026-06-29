@@ -5,6 +5,7 @@ import '../../providers/user_provider.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
+import '../../services/local_chat_db.dart';
 import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -48,8 +49,12 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
             phone: phoneCtrl.text.trim(),
           );
           ref.read(userProvider.notifier).updateProfile(updated);
-          FirestoreService.saveProfile(updated.toJson()).catchError((_) {});
-          RealtimeDatabaseService.saveUserProfile(updated.toJson());
+          final json = updated.toJson();
+          try {
+            await FirestoreService.saveProfile(json)
+                .timeout(const Duration(seconds: 8));
+          } catch (_) {}
+          RealtimeDatabaseService.saveUserProfile(json);
           AuthService.currentUser?.updateDisplayName(name).catchError((_) {});
         },
       ),
@@ -82,6 +87,7 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
     );
     if (confirmed != true || !mounted) return;
     ref.read(userProvider.notifier).clearUser();
+    await LocalChatDb.instance.clearAll();
     await AuthService.signOut();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(

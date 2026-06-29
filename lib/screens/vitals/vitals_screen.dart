@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/thresholds.dart';
 import '../../models/analysis_record.dart';
@@ -46,18 +47,65 @@ class VitalsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+      body: Column(
+        children: [
+          // ── Gradient header (matches AI Monitor style) ──────────────────
+          AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.primary, AppColors.primaryDeep],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 12,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: Row(
                     children: [
-                      Expanded(child: Text('Vitals', style: AppTextStyles.h1)),
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              width: 1.5),
+                        ),
+                        child: const Icon(Icons.favorite_rounded,
+                            color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Vitals',
+                                style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    height: 1.2)),
+                            Text('Live health metrics',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    height: 1.2)),
+                          ],
+                        ),
+                      ),
+                      // Status dot
                       Row(
                         children: [
                           Container(
@@ -69,57 +117,62 @@ class VitalsScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(updatedText, style: AppTextStyles.caption),
+                          Text(updatedText,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ],
                   ),
-                  if (onOpenAi != null) ...[
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: onOpenAi,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBg,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.arrow_back_ios_rounded,
-                                size: 11,
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.8)),
-                            const SizedBox(width: 4),
-                            Text(
-                              'AI Monitor',
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.primary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Icon(Icons.monitor_heart_outlined,
-                                size: 13, color: AppColors.primary),
-                          ],
+                ),
+              ),
+            ),
+          ),
+          // ── Optional AI Monitor chip ────────────────────────────────────
+          if (onOpenAi != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: GestureDetector(
+                onTap: onOpenAi,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_ios_rounded,
+                          size: 11,
+                          color: AppColors.primary.withValues(alpha: 0.8)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'AI Monitor',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(width: 6),
+                      const Icon(Icons.monitor_heart_outlined,
+                          size: 13, color: AppColors.primary),
+                    ],
+                  ),
+                ),
               ),
             ),
             Expanded(
               child: vitals.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       itemCount: vitals.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (ctx, i) =>
@@ -177,7 +230,6 @@ class VitalsScreen extends ConsumerWidget {
             const SizedBox(height: 8),
           ],
         ),
-      ),
     );
   }
 

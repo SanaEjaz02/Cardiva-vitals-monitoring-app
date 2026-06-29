@@ -66,7 +66,14 @@ service cloud.firestore {
         allow create:       if isSignedIn()
                                && isChatParticipant(chatId)
                                && request.resource.data.senderId == request.auth.uid;
-        allow delete: if isSignedIn() && isChatParticipant(chatId);
+        // Delete: allow if the deleter is the message sender (no get() call needed
+        // — works for both camelCase and snake_case sender field names used by
+        // old vs. new messages) OR if they are a confirmed chat participant.
+        allow delete: if isSignedIn() && (
+                         resource.data.get('senderId',   '') == request.auth.uid ||
+                         resource.data.get('sender_id',  '') == request.auth.uid ||
+                         isChatParticipant(chatId)
+                       );
       }
     }
 

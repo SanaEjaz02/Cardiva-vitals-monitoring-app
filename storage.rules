@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // User report PDFs — owner only
+    match /users/{uid}/reports/{file} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // User profile photos — owner writes, any signed-in user reads
+    match /users/{uid}/profile/{file} {
+      allow read:          if request.auth != null;
+      allow write, delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Chat attachments — any signed-in user can upload/read/delete
+    // (chatId is composed of two UIDs — both participants are always authenticated)
+    match /chats/{chatId}/{file} {
+      allow read, write, delete: if request.auth != null;
+    }
+  }
+}

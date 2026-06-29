@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/alert_class.dart';
 import '../../models/vital_reading.dart';
 import '../../providers/analysis_provider.dart';
-import '../../providers/user_provider.dart';
 import '../../providers/vital_provider.dart';
 import '../../services/notification_service.dart';
 import '../../theme/app_colors.dart';
@@ -34,7 +33,7 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   double _rr = 12;
   ActivityType _activity = ActivityType.resting;
 
-  // ── Accelerometer ─────────────────────────────────────────────────────────
+  // ── Accelerometer (internal — updated from live reading, not exposed in UI) ──
   double _ax = 0.0;
   double _ay = 9.8;
   double _az = 0.0;
@@ -42,24 +41,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   bool _loading = false;
   bool _liveMode = true;
   bool _emergencyDialogOpen = false;
-
-  // ── Countdown ticker ──────────────────────────────────────────────────────
-  Timer? _countdownTimer;
-  Duration _timeToNext = const Duration(minutes: 5);
-
-  // ── Accel magnitude (Newton-Raphson sqrt) ─────────────────────────────────
-  double get _mag {
-    final v = _ax * _ax + _ay * _ay + _az * _az;
-    if (v <= 0) return 0;
-    double x = v, last = 0;
-    while ((x - last).abs() > 0.0001) {
-      last = x;
-      x = (x + v / x) / 2;
-    }
-    return x;
-  }
-
-  bool get _isFall => _mag > 25.0 || _mag < 3.0;
 
   @override
   void initState() {
@@ -95,28 +76,12 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
         }
       }
 
-      _startCountdownTicker();
-    });
-  }
-
-  void _startCountdownTicker() {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final next = ref.read(analysisHistoryProvider.notifier).nextAnalysisAt;
-      setState(() {
-        if (next != null) {
-          final rem = next.difference(DateTime.now());
-          _timeToNext = rem.isNegative ? Duration.zero : rem;
-        }
-      });
     });
   }
 
   @override
   void dispose() {
     _pulseCtrl.dispose();
-    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -218,66 +183,10 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     ).then((_) => _emergencyDialogOpen = false);
   }
 
-  // ── Interval picker ───────────────────────────────────────────────────────
-  void _pickInterval(BuildContext context) {
-    // Options in minutes; displayed as hours
-    const options = [60, 120, 240, 360, 720];
-    final current = ref.read(analysisIntervalMinProvider);
-
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Auto-Analysis Interval', style: AppTextStyles.h2),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map(
-                (m) {
-                  final hrs = m ~/ 60;
-                  final label = hrs == 1 ? '1 hour' : '$hrs hours';
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      m == current
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      color: m == current
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                      size: 20,
-                    ),
-                    title: Text(
-                      label,
-                      style: AppTextStyles.body.copyWith(
-                        fontWeight: m == current
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: m == current
-                            ? AppColors.primary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    onTap: () {
-                      ref
-                          .read(analysisHistoryProvider.notifier)
-                          .setInterval(m);
-                      _startCountdownTicker();
-                      Navigator.pop(ctx);
-                    },
-                  );
-                },
-              )
-              .toList(),
-        ),
-      ),
-    );
-  }
 
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(userProvider);
     final intervalMin = ref.watch(analysisIntervalMinProvider);
 
     // Live band → update sliders
@@ -317,13 +226,13 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               children: [
-                _buildProfileBanner(user),
-                const SizedBox(height: 12),
                 _buildAutoAnalysisCard(intervalMin),
                 const SizedBox(height: 12),
                 _buildVitalsCard(),
-                const SizedBox(height: 12),
-                _buildAccelCard(),
+                const SizedBox(height: 8),
+                _buildLiveActivityCard(),
+                const SizedBox(height: 8),
+                _buildLiveFallCard(),
                 const SizedBox(height: 8),
               ],
             ),
@@ -335,101 +244,117 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   }
 
   // ── App bar ───────────────────────────────────────────────────────────────
-  AppBar _buildAppBar(int intervalMin) {
-    return AppBar(
-      backgroundColor: AppColors.bgLight,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_rounded,
-            size: 20, color: AppColors.textPrimary),
-        onPressed: () =>
-            widget.onBack != null ? widget.onBack!() : Navigator.pop(context),
-      ),
-      title: Text('AI Monitor', style: AppTextStyles.h1),
-      actions: [
-        // Interval chip
-        GestureDetector(
-          onTap: () => _pickInterval(context),
-          child: Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.primaryBg.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(20),
-              border:
-                  Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.timer_outlined,
-                    size: 13, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text(
-                  intervalMin < 60
-                      ? '$intervalMin min'
-                      : '${intervalMin ~/ 60}h',
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 3),
-                const Icon(Icons.arrow_drop_down_rounded,
-                    size: 14, color: AppColors.primary),
-              ],
-            ),
+  PreferredSizeWidget _buildAppBar(int intervalMin) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.primary, AppColors.primaryDeep],
           ),
+          boxShadow: [
+            BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 12,
+                offset: Offset(0, 3)),
+          ],
         ),
-        // Live badge
-        GestureDetector(
-          onTap: () => setState(() => _liveMode = !_liveMode),
-          child: Container(
-            margin: const EdgeInsets.only(right: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: _liveMode
-                  ? AppColors.success.withValues(alpha: 0.12)
-                  : AppColors.divider.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _liveMode
-                    ? AppColors.success.withValues(alpha: 0.4)
-                    : AppColors.divider,
+        child: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_rounded,
+                size: 20, color: Colors.white),
+            onPressed: () =>
+                widget.onBack != null ? widget.onBack!() : Navigator.pop(context),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3), width: 1.5),
+                ),
+                child: const Icon(Icons.monitor_heart_rounded,
+                    color: Colors.white, size: 20),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_liveMode)
-                  FadeTransition(
-                    opacity: _pulseCtrl,
-                    child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('AI Monitor',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.2)),
+                  Text('Real-time vitals analysis',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          height: 1.2)),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            // Live / Paused toggle badge
+            GestureDetector(
+              onTap: () => setState(() => _liveMode = !_liveMode),
+              child: Container(
+                margin: const EdgeInsets.only(right: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _liveMode
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_liveMode)
+                      FadeTransition(
+                        opacity: _pulseCtrl,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    else
+                      const Icon(Icons.pause_circle_outline_rounded,
+                          size: 12, color: Colors.white),
+                    const SizedBox(width: 5),
+                    Text(
+                      _liveMode ? 'Live' : 'Paused',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  )
-                else
-                  const Icon(Icons.pause_circle_outline_rounded,
-                      size: 12, color: AppColors.textSecondary),
-                const SizedBox(width: 5),
-                Text(
-                  _liveMode ? 'Live' : 'Paused',
-                  style: AppTextStyles.caption.copyWith(
-                    color:
-                        _liveMode ? AppColors.success : AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -438,13 +363,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     final last = ref.watch(lastAnalysisProvider);
     final isAnalyzing =
         ref.read(analysisHistoryProvider.notifier).isAnalyzing;
-
-    final totalSec = intervalMin * 60;
-    final remainSec = _timeToNext.inSeconds.clamp(0, totalSec);
-    final progress =
-        totalSec > 0 ? (totalSec - remainSec) / totalSec : 0.0;
-
-    final countdownStr = _fmtCountdown(_timeToNext);
 
     // Card gradient based on last result
     Color cardColor1;
@@ -586,45 +504,16 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
             const SizedBox(height: 12),
           ],
 
-          // Progress bar + countdown
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              backgroundColor: Colors.white.withValues(alpha: 0.25),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Colors.white),
-              minHeight: 4,
+          Text(
+            isAnalyzing ? 'Analyzing now…' : 'Auto-analysis every $intervalMin min',
+            style: AppTextStyles.caption.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontWeight: FontWeight.w600,
             ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Text(
-                isAnalyzing ? 'Analyzing now…' : 'Next in $countdownStr',
-                style: AppTextStyles.caption.copyWith(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                'Every ${intervalMin == 1 ? '1 min' : '$intervalMin min'}',
-                style: AppTextStyles.caption.copyWith(
-                  color: Colors.white.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
           ),
         ],
       ),
     );
-  }
-
-  String _fmtCountdown(Duration d) {
-    final m = d.inMinutes;
-    final s = d.inSeconds % 60;
-    return '${m.toString().padLeft(1, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   String _timeAgo(DateTime t) {
@@ -634,59 +523,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
       return '${diff.inMinutes} min ago';
     }
     return '${diff.inHours}h ago';
-  }
-
-  // ── Profile banner ────────────────────────────────────────────────────────
-  Widget _buildProfileBanner(dynamic user) {
-    final age = user?.age ?? 35;
-    final height = user?.heightCm ?? 170.0;
-    final weight = user?.weightKg ?? 70.0;
-    final bmi = user?.bmi ?? 24.2;
-    final gender = user?.gender ?? 'Male';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.bgWhite,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: const [
-          BoxShadow(
-              color: AppColors.shadowSm, blurRadius: 10, offset: Offset(0, 2))
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: const BoxDecoration(
-              color: AppColors.primaryBg,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person_rounded,
-                color: AppColors.primary, size: 17),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Patient profile used for analysis',
-                    style: AppTextStyles.caption.copyWith(
-                        color: AppColors.primary, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(
-                  '$gender · Age $age · ${height.toStringAsFixed(0)} cm · '
-                  '${weight.toStringAsFixed(1)} kg · BMI ${bmi.toStringAsFixed(1)}',
-                  style: AppTextStyles.caption,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── Vitals card ───────────────────────────────────────────────────────────
@@ -741,31 +577,105 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
             trackColor: _rrColor(_rr),
             onChanged: (v) => setState(() => _rr = v),
           ),
-          const SizedBox(height: 4),
-          Row(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveActivityCard() {
+    const color = AppColors.primary;
+    final label = _activityLabel(_activity);
+    return Container(
+      height: 72,
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadowSm, blurRadius: 16, offset: Offset(0, 2)),
+        ],
+        border: Border(left: BorderSide(color: color, width: 4)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.directions_walk_rounded,
-                  size: 15, color: AppColors.textSecondary),
-              const SizedBox(width: 8),
-              Text('Activity', style: AppTextStyles.body),
-              const Spacer(),
-              DropdownButton<ActivityType>(
-                value: _activity,
-                underline: const SizedBox(),
-                style: AppTextStyles.body.copyWith(
-                    color: AppColors.primary, fontWeight: FontWeight.w600),
-                items: ActivityType.values
-                    .map((a) => DropdownMenuItem(
-                          value: a,
-                          child: Text(_activityLabel(a)),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _activity = v);
-                },
-              ),
+              Icon(Icons.directions_walk_rounded, color: color, size: 20),
+              const SizedBox(height: 2),
+              Text('Activity', style: AppTextStyles.caption),
             ],
           ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(label,
+                style: AppTextStyles.h2.copyWith(color: color, fontSize: 20)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('Live',
+                style: AppTextStyles.caption
+                    .copyWith(color: color, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveFallCard() {
+    final reading = ref.watch(latestReadingProvider).valueOrNull;
+    final isFall = reading?.fallDetected ?? false;
+    final color = isFall ? AppColors.danger : AppColors.success;
+    return Container(
+      height: 72,
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadowSm, blurRadius: 16, offset: Offset(0, 2)),
+        ],
+        border: Border(left: BorderSide(color: color, width: 4)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isFall ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                color: color,
+                size: 20,
+              ),
+              const SizedBox(height: 2),
+              Text('Fall', style: AppTextStyles.caption),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              isFall ? 'Fall Detected!' : 'Safe',
+              style: AppTextStyles.h2.copyWith(color: color, fontSize: 20),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              isFall ? 'Alert' : 'Normal',
+              style: AppTextStyles.caption
+                  .copyWith(color: color, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
         ],
       ),
     );
@@ -800,87 +710,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     if (v < 5 || v > 30) return AppColors.danger;
     if (v < 12 || v > 20) return AppColors.warning;
     return AppColors.success;
-  }
-
-  // ── Accelerometer card ────────────────────────────────────────────────────
-  Widget _buildAccelCard() {
-    return _Card(
-      title: 'Accelerometer',
-      icon: Icons.screen_rotation_alt_rounded,
-      iconColor: AppColors.secondary,
-      child: Column(
-        children: [
-          _SliderRow(
-            icon: Icons.arrow_forward_rounded,
-            label: 'X axis',
-            value: _ax,
-            unit: 'm/s²',
-            min: -30,
-            max: 30,
-            hint: 'Lateral',
-            trackColor: AppColors.secondary,
-            onChanged: (v) => setState(() => _ax = v),
-          ),
-          _SliderRow(
-            icon: Icons.arrow_upward_rounded,
-            label: 'Y axis',
-            value: _ay,
-            unit: 'm/s²',
-            min: -30,
-            max: 30,
-            hint: 'Forward / backward',
-            trackColor: AppColors.secondary,
-            onChanged: (v) => setState(() => _ay = v),
-          ),
-          _SliderRow(
-            icon: Icons.vertical_align_center_rounded,
-            label: 'Z axis',
-            value: _az,
-            unit: 'm/s²',
-            min: -30,
-            max: 30,
-            hint: 'Vertical (resting ≈ 9.8)',
-            trackColor: AppColors.secondary,
-            onChanged: (v) => setState(() => _az = v),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: _isFall ? AppColors.dangerBg : AppColors.successBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _isFall
-                    ? AppColors.danger.withValues(alpha: 0.3)
-                    : AppColors.success.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  _isFall
-                      ? Icons.warning_amber_rounded
-                      : Icons.check_circle_outline_rounded,
-                  size: 15,
-                  color: _isFall ? AppColors.danger : AppColors.success,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Magnitude ${_mag.toStringAsFixed(1)} m/s²  ·  '
-                    '${_isFall ? "Fall range detected" : "Normal resting ≈ 9.8"}',
-                    style: AppTextStyles.caption.copyWith(
-                      color: _isFall ? AppColors.danger : AppColors.success,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── Bottom bar ────────────────────────────────────────────────────────────

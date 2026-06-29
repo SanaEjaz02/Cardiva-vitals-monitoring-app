@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
@@ -81,54 +82,75 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
     final myUid = AuthService.currentUser?.uid ?? '';
     final patientsAsync = ref.watch(_linkedPatientsForChatProvider(myUid));
 
-    return Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Column(
       children: [
-        // ── Messages header ────────────────────────────────────────────────
-        SafeArea(
-          bottom: false,
-          child: Container(
-            color: AppColors.primaryDeep,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
+        // ── Chats header (matches alert history tab style) ─────────────────
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.primary, AppColors.primaryDeep],
+            ),
+            boxShadow: [
+              BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 3)),
+            ],
+          ),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.of(context).padding.top + 14,
+            16,
+            12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1.5),
+                    ),
+                    child: const Icon(Icons.chat_bubble_rounded,
+                        color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Chats',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.2),
                       ),
-                      child: const Icon(Icons.medical_services_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Cardiva',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              height: 1.2),
-                        ),
-                        Text(
-                          'Messages',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.8),
-                              height: 1.2),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-              // ── Search bar ───────────────────────────────────────────────
+                      Text(
+                        'Guardian portal',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.8),
+                            height: 1.2),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // ── Search bar ─────────────────────────────────────────────
               TextField(
                 controller: _searchCtrl,
                 onChanged: (v) => setState(() => _search = v.toLowerCase()),
@@ -160,10 +182,8 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
             ],
           ),
-        ),
         ),
 
         // ── Patient list ───────────────────────────────────────────────────
@@ -267,7 +287,8 @@ class _AttendantChatListTabState extends ConsumerState<AttendantChatListTab> {
           ),
         ),
       ],
-    );
+    ), // Column
+    ); // AnnotatedRegion
   }
 }
 

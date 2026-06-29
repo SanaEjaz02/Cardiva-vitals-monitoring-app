@@ -23,8 +23,9 @@ class EmergencyTrigger {
     required String userName,
     required String userPhone,
     required String userId,
+    bool force = false, // bypass rate-limit for manual SOS
   }) async {
-    if (event.alertClass == AlertClass.normal) return;
+    if (event.alertClass == AlertClass.normal && !force) return;
 
     // Step 1: Get GPS location (best-effort)
     String mapsLink = 'Location unavailable';
@@ -57,9 +58,10 @@ class EmergencyTrigger {
 
     // Step 3: Send in-app Cardiva chat message to all linked guardians AND
     // store the full contact list (including manual phone-only guardians) for
-    // the alert record. Rate-limited to once per 5 minutes.
+    // the alert record. Rate-limited to once per 5 minutes (bypassed for manual SOS).
     final now = DateTime.now();
-    final canSend = _lastAlertSentAt == null ||
+    final canSend = force ||
+        _lastAlertSentAt == null ||
         now.difference(_lastAlertSentAt!) >= _alertCooldown;
 
     if (canSend) {

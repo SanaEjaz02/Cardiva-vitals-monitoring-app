@@ -24,11 +24,7 @@ class HealthStatusEngine {
     // ── Step 3: Fall model output ─────────────────────────────────────────────
     final fallDetected = reading.fallDetected;
 
-    // ── Step 4: 4-class decision (2×2 matrix) ────────────────────────────────
-    // Class 1 — Fall=True  + Vitals=High Risk → EMERGENCY
-    // Class 2 — Fall=True  + Vitals=Low Risk  → FALL ALERT
-    // Class 3 — Fall=False + Vitals=High Risk → VITALS ALERT
-    // Class 4 — Fall=False + Vitals=Low Risk  → NORMAL
+    // ── Step 4: 4-class decision ─────────────────────────────────────────────────
     final alertClass = switch ((fallDetected, vitalsHighRisk)) {
       (true, true) => AlertClass.emergency,
       (true, false) => AlertClass.fallAlert,

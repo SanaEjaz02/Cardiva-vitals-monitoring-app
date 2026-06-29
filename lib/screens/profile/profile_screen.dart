@@ -19,6 +19,7 @@ import '../../theme/app_text_styles.dart';
 import '../../widgets/atoms/pill_widget.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
+import '../../services/local_chat_db.dart';
 
 import 'feedback_sheet.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -325,6 +326,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // Step 4 (90–100%): sign out
     statusMsg.value = 'Signing out...';
     try {
+      await LocalChatDb.instance.clearAll();
       await AuthService.signOut();
     } catch (_) {}
     progress.value = 1.0;
@@ -385,6 +387,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              await LocalChatDb.instance.clearAll();
               await AuthService.signOut();
               if (mounted) {
                 Navigator.pushNamedAndRemoveUntil(

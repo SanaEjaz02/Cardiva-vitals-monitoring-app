@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -12,6 +13,7 @@ import '../../models/chat_message.dart';
 import '../../providers/user_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/link_service.dart';
+import '../../services/local_chat_db.dart';
 import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -19,7 +21,6 @@ import '../../theme/app_text_styles.dart';
 // Helpers shared by tiles
 bool _isPending(Map<String, dynamic> g) => g['is_pending'] == true;
 
-// ── Header color ───────────────────────────────────────────────────────────────
 const _kHeaderColor = AppColors.primaryDeep;
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -815,9 +816,15 @@ class _PatientGuardianChatPageState
   bool _msgLoading = true;
   bool _msgError = false;
 
-  // Multi-select
+  final _hiddenIds = <String>{};
   final _selectedIds = <String>{};
   bool get _inSelectionMode => _selectedIds.isNotEmpty;
+
+  bool _isOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connectSub;
+
+  String get _chatId =>
+      ChatService.chatId(widget.myUid, widget.guardianUid);
 
   void _toggleSelect(String id) => setState(() {
         if (_selectedIds.contains(id)) {
@@ -829,36 +836,55 @@ class _PatientGuardianChatPageState
 
   Future<void> _deleteSelected() async {
     final toDelete = _selectedIds.toList();
-    final msgs = _messages.where((m) => toDelete.contains(m.id)).toList();
     setState(() {
       _selectedIds.clear();
+      _hiddenIds.addAll(toDelete);
       _messages = _messages.where((m) => !toDelete.contains(m.id)).toList();
     });
-    for (final m in msgs) {
-      ChatService.deleteMessage(m.senderId, m.receiverId, m.id).catchError((_) {});
+    for (final id in toDelete) {
+      LocalChatDb.instance.deleteMessage(_chatId, id).catchError((_) {});
+      ChatService.deleteMessage(widget.myUid, widget.guardianUid, id)
+          .catchError((_) {});
     }
   }
 
   @override
   void initState() {
     super.initState();
+    _loadFromLocal();
     _subscribeMessages();
-    // Force a server-side fetch immediately and every 20 seconds.
-    // This ensures messages appear even when the Firestore WebSocket
-    // misses live events (common on restricted Android devices).
-    _refreshFromServer();
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => _refreshFromServer(),
     );
     ChatService.markRead(widget.myUid, widget.guardianUid).catchError((_) {});
+    _connectSub = Connectivity().onConnectivityChanged.listen((results) {
+      final online = results.any((r) => r != ConnectivityResult.none);
+      if (!mounted) return;
+      final wasOffline = !_isOnline;
+      setState(() => _isOnline = online);
+      if (online && wasOffline) {
+        _refreshFromServer();
+        _subscribeMessages();
+      }
+    });
+  }
+
+  Future<void> _loadFromLocal() async {
+    final cached = await LocalChatDb.instance.loadMessages(_chatId);
+    if (!mounted || cached.isEmpty) return;
+    setState(() {
+      _messages = cached;
+      _msgLoading = false;
+    });
+    _scrollToBottom();
   }
 
   Future<void> _refreshFromServer() async {
     try {
       await FirebaseFirestore.instance
           .collection('chats')
-          .doc(ChatService.chatId(widget.myUid, widget.guardianUid))
+          .doc(_chatId)
           .collection('messages')
           .orderBy('timestamp', descending: false)
           .get(const GetOptions(source: Source.server));
@@ -867,14 +893,16 @@ class _PatientGuardianChatPageState
 
   void _subscribeMessages() {
     _msgSub?.cancel();
-    if (mounted) setState(() { _msgLoading = true; _msgError = false; });
     _msgSub = ChatService.messagesStream(widget.myUid, widget.guardianUid)
         .listen(
           (msgs) {
             if (!mounted) return;
-            setState(() { _messages = msgs; _msgLoading = false; _msgError = false; });
+            LocalChatDb.instance.saveMessages(_chatId, msgs).catchError((_) {});
+            final filtered = _hiddenIds.isEmpty
+                ? msgs
+                : msgs.where((m) => !_hiddenIds.contains(m.id)).toList();
+            setState(() { _messages = filtered; _msgLoading = false; _msgError = false; });
             if (msgs.isNotEmpty) _scrollToBottom();
-            // Mark any newly-arrived guardian messages as read.
             ChatService.markRead(widget.myUid, widget.guardianUid).catchError((_) {});
           },
           onError: (_) {
@@ -887,6 +915,7 @@ class _PatientGuardianChatPageState
   void dispose() {
     _msgSub?.cancel();
     _refreshTimer?.cancel();
+    _connectSub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
@@ -996,9 +1025,19 @@ class _PatientGuardianChatPageState
       itemBuilder: (_, i) => _Bubble(
         msg: _messages[i],
         myUid: widget.myUid,
+        guardianUid: widget.guardianUid,
         isSelected: _selectedIds.contains(_messages[i].id),
         isSelectionMode: _inSelectionMode,
         onSelectMessage: _toggleSelect,
+        onDelete: (id) {
+          setState(() {
+            _hiddenIds.add(id);
+            _messages = _messages.where((m) => m.id != id).toList();
+          });
+          LocalChatDb.instance.deleteMessage(_chatId, id).catchError((_) {});
+          ChatService.deleteMessage(widget.myUid, widget.guardianUid, id)
+              .catchError((_) {});
+        },
       ),
     );
   }
@@ -1080,11 +1119,30 @@ class _PatientGuardianChatPageState
             ),
       body: Column(
         children: [
+          if (!_isOnline)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFF59E0B),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wifi_off_rounded, color: Colors.white, size: 14),
+                  SizedBox(width: 6),
+                  Text(
+                    'You\'re offline — showing cached messages',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
           Expanded(child: _buildMessageArea()),
           _InputBar(
             ctrl: _ctrl,
             onSend: _send,
-            sending: false,
             hintText: 'Message ${widget.guardianName}…',
           ),
         ],
@@ -1098,16 +1156,20 @@ class _PatientGuardianChatPageState
 class _Bubble extends StatelessWidget {
   final ChatMessage msg;
   final String myUid;
+  final String guardianUid;
   final bool isSelected;
   final bool isSelectionMode;
   final void Function(String id)? onSelectMessage;
+  final void Function(String id)? onDelete;
 
   const _Bubble({
     required this.msg,
     required this.myUid,
+    required this.guardianUid,
     this.isSelected = false,
     this.isSelectionMode = false,
     this.onSelectMessage,
+    this.onDelete,
   });
 
   bool get _isMe => msg.senderId == myUid;
@@ -1178,12 +1240,9 @@ class _Bubble extends StatelessWidget {
                     const Icon(Icons.delete_rounded, color: AppColors.danger),
                 title: const Text('Delete Message',
                     style: TextStyle(color: AppColors.danger)),
-                onTap: () async {
+                onTap: () {
                   Navigator.pop(context);
-                  try {
-                    await ChatService.deleteMessage(
-                        msg.senderId, msg.receiverId, msg.id);
-                  } catch (_) {}
+                  onDelete?.call(msg.id);
                 },
               ),
           ],
@@ -1365,12 +1424,10 @@ class _Bubble extends StatelessWidget {
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final VoidCallback onSend;
-  final bool sending;
   final String hintText;
   const _InputBar({
     required this.ctrl,
     required this.onSend,
-    required this.sending,
     this.hintText = 'Message…',
   });
 
@@ -1405,22 +1462,16 @@ class _InputBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: sending ? null : onSend,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
+            onTap: onSend,
+            child: Container(
               width: 46,
               height: 46,
-              decoration: BoxDecoration(
-                color: sending ? AppColors.accentTint : _kHeaderColor,
+              decoration: const BoxDecoration(
+                color: _kHeaderColor,
                 shape: BoxShape.circle,
               ),
-              child: sending
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.send_rounded,
-                      color: Colors.white, size: 20),
+              child: const Icon(Icons.send_rounded,
+                  color: Colors.white, size: 20),
             ),
           ),
         ],

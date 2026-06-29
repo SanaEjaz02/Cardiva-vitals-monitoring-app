@@ -34,6 +34,29 @@ class StorageService {
     } catch (_) {}
   }
 
+  /// Uploads a chat attachment and returns its download URL, or null on failure.
+  /// [chatId] — the sorted UID chat document ID.
+  /// [file] — local file to upload.
+  /// [contentType] — MIME type (e.g. 'image/jpeg', 'application/pdf').
+  static Future<String?> uploadChatFile(
+    String chatId,
+    File file,
+    String contentType,
+  ) async {
+    try {
+      final ext = file.path.split('.').last;
+      final name = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ref = _storage.ref('chats/$chatId/$name');
+      final task = await ref.putFile(
+        file,
+        SettableMetadata(contentType: contentType),
+      );
+      return await task.ref.getDownloadURL();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Uploads the user's profile photo and returns its download URL, or null on failure.
   static Future<String?> uploadProfilePhoto(File file) async {
     final uid = _uid;

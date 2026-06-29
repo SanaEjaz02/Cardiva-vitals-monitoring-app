@@ -1,16 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum MessageType { text, emergency, report }
+enum MessageType { text, emergency, report, image, document }
 
 class ChatMessage {
   final String id;
   final String senderId;
   final String receiverId;
   final String senderName;
-  final String content; // maps to 'text' field in Firestore
+  final String content;
   final DateTime timestamp;
   final MessageType type;
   final bool isRead;
+  final String? fileUrl;
+  final String? fileName;
 
   const ChatMessage({
     required this.id,
@@ -21,13 +23,14 @@ class ChatMessage {
     required this.timestamp,
     this.type = MessageType.text,
     this.isRead = false,
+    this.fileUrl,
+    this.fileName,
   });
 
   factory ChatMessage.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     return ChatMessage(
       id: doc.id,
-      // Support both old snake_case and new camelCase field names
       senderId: d['senderId'] as String? ?? d['sender_id'] as String? ?? '',
       receiverId: d['receiverId'] as String? ?? '',
       senderName:
@@ -37,6 +40,8 @@ class ChatMessage {
           (d['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       type: typeFromString(d['type'] as String? ?? 'text'),
       isRead: d['isRead'] as bool? ?? d['is_read'] as bool? ?? false,
+      fileUrl: d['fileUrl'] as String?,
+      fileName: d['fileName'] as String?,
     );
   }
 
@@ -48,17 +53,23 @@ class ChatMessage {
         'timestamp': Timestamp.fromDate(timestamp),
         'type': typeToString(type),
         'isRead': isRead,
+        if (fileUrl != null) 'fileUrl': fileUrl,
+        if (fileName != null) 'fileName': fileName,
       };
 
   static MessageType typeFromString(String s) => switch (s) {
         'emergency' => MessageType.emergency,
         'report' => MessageType.report,
+        'image' => MessageType.image,
+        'document' => MessageType.document,
         _ => MessageType.text,
       };
 
   static String typeToString(MessageType t) => switch (t) {
         MessageType.emergency => 'emergency',
         MessageType.report => 'report',
+        MessageType.image => 'image',
+        MessageType.document => 'document',
         MessageType.text => 'text',
       };
 }
