@@ -95,7 +95,7 @@ class EmergencyTrigger {
               path: phone,
               queryParameters: {'body': smsText},
             );
-            launchUrl(smsUri, mode: LaunchMode.externalApplication)
+            launchUrl(smsUri, mode: LaunchMode.platformDefault)
                 .catchError((_) => false);
           }
 

@@ -42,6 +42,11 @@ class _DevicePairScreenState extends State<DevicePairScreen>
   void _proceed() =>
       Navigator.pushNamed(context, AppRouter.setupContact);
 
+  Future<void> _connectAndProceed() async {
+    await Navigator.pushNamed(context, AppRouter.deviceConnect);
+    if (mounted) _proceed();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,7 +181,7 @@ class _DevicePairScreenState extends State<DevicePairScreen>
                           color: AppColors.success, size: 20),
                       const SizedBox(width: 12),
                       TextButton(
-                        onPressed: _proceed,
+                        onPressed: _connectAndProceed,
                         style: TextButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,

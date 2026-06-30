@@ -55,7 +55,7 @@ class SmsService {
   static Future<void> sendAlert({
     required String to,
     required String message,
-  }) => sendWhatsApp(to: to, message: message);
+  }) => sendSms(to: to, message: message);
 
   static Future<void> sendSms({
     required String to,
