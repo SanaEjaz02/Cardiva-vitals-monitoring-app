@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Cardiva (debug)",
+      "request": "launch",
+      "type": "dart",
+      "args": ["--target-platform", "android-arm64"]
+    }
+  ]
+}
