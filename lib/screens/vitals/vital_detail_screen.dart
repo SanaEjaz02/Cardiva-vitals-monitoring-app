@@ -7,6 +7,7 @@ import '../../core/constants/thresholds.dart';
 import '../../models/analysis_record.dart';
 import '../../models/vital_reading.dart';
 import '../../providers/analysis_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../providers/vital_provider.dart';
 import '../../router/app_router.dart';
 import '../../theme/app_colors.dart';
@@ -127,9 +128,10 @@ class _VitalDetailScreenState extends ConsumerState<VitalDetailScreen>
 
   (String, PillVariant) _computeStatus(VitalReading? reading) {
     if (reading == null) return ('—', PillVariant.outline);
+    final gender = (ref.read(userProvider)?.gender ?? 'male').toLowerCase();
     switch (widget.vitalId) {
       case 'heartRate':
-        final t = VitalThresholds.hrThresholdsFor(reading.activity);
+        final t = VitalThresholds.hrThresholdsFor(reading.activity, gender: gender);
         final hr = reading.heartRate;
         if (hr < (t['emergencyLow'] ?? 40) || hr > (t['emergencyHigh'] ?? 150)) {
           return ('Critical', PillVariant.danger);
@@ -143,8 +145,8 @@ class _VitalDetailScreenState extends ConsumerState<VitalDetailScreen>
         if (reading.spO2 < VitalThresholds.spo2StableLow) return ('Warning', PillVariant.warning);
         return ('Normal', PillVariant.success);
       case 'hrv':
-        if (reading.hrv < VitalThresholds.hrvWarningLow) return ('Critical', PillVariant.danger);
-        if (reading.hrv < VitalThresholds.hrvStableLow) return ('Warning', PillVariant.warning);
+        if (reading.hrv < VitalThresholds.hrvWarningLowFor(gender)) return ('Critical', PillVariant.danger);
+        if (reading.hrv < VitalThresholds.hrvStableLowFor(gender)) return ('Warning', PillVariant.warning);
         return ('Normal', PillVariant.success);
       case 'respiration':
         final rr = reading.respirationRate;

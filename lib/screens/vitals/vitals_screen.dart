@@ -5,6 +5,7 @@ import '../../core/constants/thresholds.dart';
 import '../../models/analysis_record.dart';
 import '../../models/vital_reading.dart';
 import '../../providers/analysis_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../providers/vital_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -21,13 +22,14 @@ class VitalsScreen extends ConsumerWidget {
     final readingAsync = ref.watch(latestReadingProvider);
     final history = ref.watch(analysisHistoryProvider);
     final reading = readingAsync.valueOrNull;
+    final gender = (ref.read(userProvider)?.gender ?? 'male').toLowerCase();
 
     final recent =
         history.length > 10 ? history.sublist(history.length - 10) : history;
 
     final vitals = reading != null
-        ? _buildVitalRows(reading, recent)
-        : _fallbackVitalRows(recent);
+        ? _buildVitalRows(reading, recent, gender)
+        : _fallbackVitalRows(recent, gender);
 
     String updatedText = 'Connecting…';
     Color dotColor = AppColors.warning;
@@ -234,7 +236,7 @@ class VitalsScreen extends ConsumerWidget {
   }
 
   List<_VitalRow> _buildVitalRows(
-      VitalReading r, List<AnalysisRecord> recent) {
+      VitalReading r, List<AnalysisRecord> recent, String gender) {
     final hrSpark = recent.isNotEmpty
         ? recent.map((x) => x.heartRate).toList()
         : [r.heartRate, r.heartRate];
@@ -254,7 +256,7 @@ class VitalsScreen extends ConsumerWidget {
         Icons.favorite_rounded,
         r.heartRate.toStringAsFixed(0),
         'bpm',
-        _hrStatus(r.heartRate, r.activity),
+        _hrStatus(r.heartRate, r.activity, gender),
         'heartRate',
         hrSpark,
       ),
@@ -272,7 +274,7 @@ class VitalsScreen extends ConsumerWidget {
         Icons.timeline_rounded,
         r.hrv.toStringAsFixed(0),
         'ms',
-        _hrvStatus(r.hrv),
+        _hrvStatus(r.hrv, gender),
         'hrv',
         hrvSpark,
       ),
@@ -308,7 +310,7 @@ class VitalsScreen extends ConsumerWidget {
     ];
   }
 
-  List<_VitalRow> _fallbackVitalRows(List<AnalysisRecord> recent) {
+  List<_VitalRow> _fallbackVitalRows(List<AnalysisRecord> recent, String gender) {
     if (recent.isEmpty) return [];
     final last = recent.last;
     final hrSpark = recent.map((x) => x.heartRate).toList();
@@ -318,13 +320,13 @@ class VitalsScreen extends ConsumerWidget {
     return [
       _VitalRow('Heart Rate', Icons.favorite_rounded,
           last.heartRate.toStringAsFixed(0), 'bpm',
-          _hrStatus(last.heartRate, ActivityType.resting), 'heartRate', hrSpark),
+          _hrStatus(last.heartRate, ActivityType.resting, gender), 'heartRate', hrSpark),
       _VitalRow('SpO₂', Icons.air_rounded,
           last.spo2.toStringAsFixed(0), '%',
           _spo2Status(last.spo2), 'spo2', spo2Spark),
       _VitalRow('HRV', Icons.timeline_rounded,
           last.hrv.toStringAsFixed(0), 'ms',
-          _hrvStatus(last.hrv), 'hrv', hrvSpark),
+          _hrvStatus(last.hrv, gender), 'hrv', hrvSpark),
       _VitalRow('Respiration', Icons.waves_rounded,
           last.respirationRate.toStringAsFixed(0), '/min',
           _rrStatus(last.respirationRate), 'respiration', rrSpark),
@@ -338,8 +340,8 @@ class VitalsScreen extends ConsumerWidget {
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
-VitalDisplayStatus _hrStatus(double hr, ActivityType activity) {
-  final t = VitalThresholds.hrThresholdsFor(activity);
+VitalDisplayStatus _hrStatus(double hr, ActivityType activity, String gender) {
+  final t = VitalThresholds.hrThresholdsFor(activity, gender: gender);
   if (hr < (t['emergencyLow'] ?? 40) || hr > (t['emergencyHigh'] ?? 150)) {
     return VitalDisplayStatus.critical;
   }
@@ -355,9 +357,9 @@ VitalDisplayStatus _spo2Status(double spo2) {
   return VitalDisplayStatus.normal;
 }
 
-VitalDisplayStatus _hrvStatus(double hrv) {
-  if (hrv < VitalThresholds.hrvWarningLow) return VitalDisplayStatus.critical;
-  if (hrv < VitalThresholds.hrvStableLow) return VitalDisplayStatus.warning;
+VitalDisplayStatus _hrvStatus(double hrv, String gender) {
+  if (hrv < VitalThresholds.hrvWarningLowFor(gender)) return VitalDisplayStatus.critical;
+  if (hrv < VitalThresholds.hrvStableLowFor(gender)) return VitalDisplayStatus.warning;
   return VitalDisplayStatus.normal;
 }
 

@@ -62,11 +62,12 @@ class MockDataService {
   // ── Internal generators ───────────────────────────────────────────────────
 
   VitalReading _generate() {
-    // Every 30th reading injects low SpO2 to test emergency flow
-    if (_readingCount % 30 == 0) {
+    // Every 200th reading (~6 min) injects low SpO2 to allow manual emergency testing.
+    // Use the debug panel buttons (injectWarning / injectEmergency) for on-demand testing.
+    if (_readingCount % 200 == 0 && _readingCount > 0) {
       return VitalReading(
         heartRate: 78,
-        spO2: 88, // emergency threshold (<90)
+        spO2: 88,
         hrv: 55,
         respirationRate: 15,
         activity: ActivityType.resting,

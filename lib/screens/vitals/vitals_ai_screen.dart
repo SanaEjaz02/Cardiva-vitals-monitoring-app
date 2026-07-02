@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/alert_class.dart';
@@ -202,18 +203,14 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
       });
     });
 
-    // Live health event → auto emergency
+    // Live health event → only handle emergency dialog here.
+    // Vitals/fall alert notifications are handled globally with debounce
+    // in AnalysisHistoryNotifier._listenForThresholdAlerts().
     ref.listen(healthEventProvider, (_, next) {
       final event = next.valueOrNull;
       if (event == null || !mounted) return;
       if (event.alertClass == AlertClass.emergency) {
         _handleLiveEmergency();
-      } else if (event.alertClass == AlertClass.vitalsAlert ||
-          event.alertClass == AlertClass.fallAlert) {
-        NotificationService.showWarningNotification(
-          '⚠️ ${event.alertClass.label}',
-          event.statusMessage,
-        ).catchError((_) {});
       }
     });
 
@@ -227,6 +224,8 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               children: [
                 _buildAutoAnalysisCard(intervalMin),
+                const SizedBox(height: 12),
+                _buildTrendChart(),
                 const SizedBox(height: 12),
                 _buildVitalsCard(),
                 const SizedBox(height: 8),
@@ -525,6 +524,106 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     return '${diff.inHours}h ago';
   }
 
+  // ── 4-vital trend charts (2×2 grid, last 10 analysis records) ───────────
+  Widget _buildTrendChart() {
+    final records = ref.watch(analysisHistoryProvider);
+    final recent =
+        records.length > 10 ? records.sublist(records.length - 10) : records;
+    final hasData = recent.length >= 2;
+
+    List<FlSpot> spots(List<double> vals) => vals.isEmpty
+        ? [const FlSpot(0, 0)]
+        : vals
+            .asMap()
+            .entries
+            .map((e) => FlSpot(e.key.toDouble(), e.value))
+            .toList();
+
+    final hrVals   = recent.map((r) => r.heartRate).toList();
+    final spo2Vals = recent.map((r) => r.spo2).toList();
+    final hrvVals  = recent.map((r) => r.hrv).toList();
+    final rrVals   = recent.map((r) => r.respirationRate).toList();
+
+    final spanLabel = hasData
+        ? '${_hhmm(recent.first.timestamp)} – ${_hhmm(recent.last.timestamp)}'
+        : 'Waiting for data…';
+
+    return _Card(
+      title: 'Vitals Trend',
+      icon: Icons.show_chart_rounded,
+      iconColor: AppColors.primary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(spanLabel, style: AppTextStyles.caption),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniChart(
+                  label: 'Heart Rate',
+                  unit: 'bpm',
+                  color: AppColors.danger,
+                  spots: spots(hrVals),
+                  minY: 40, maxY: 160,
+                  currentValue: hrVals.isNotEmpty ? hrVals.last : null,
+                  normalRange: '60–100 bpm',
+                  hasData: hasData,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MiniChart(
+                  label: 'SpO₂',
+                  unit: '%',
+                  color: AppColors.primary,
+                  spots: spots(spo2Vals),
+                  minY: 85, maxY: 100,
+                  currentValue: spo2Vals.isNotEmpty ? spo2Vals.last : null,
+                  normalRange: '≥95%  ·  crit <92%',
+                  hasData: hasData,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniChart(
+                  label: 'HRV',
+                  unit: 'ms',
+                  color: const Color(0xFF7C3AED),
+                  spots: spots(hrvVals),
+                  minY: 0, maxY: 100,
+                  currentValue: hrvVals.isNotEmpty ? hrvVals.last : null,
+                  normalRange: '≥50 ms (M)  ·  ≥45 (F)',
+                  hasData: hasData,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MiniChart(
+                  label: 'Resp. Rate',
+                  unit: '/min',
+                  color: AppColors.success,
+                  spots: spots(rrVals),
+                  minY: 0, maxY: 35,
+                  currentValue: rrVals.isNotEmpty ? rrVals.last : null,
+                  normalRange: '12–20 /min',
+                  hasData: hasData,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _hhmm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
   // ── Vitals card ───────────────────────────────────────────────────────────
   Widget _buildVitalsCard() {
     return _Card(
@@ -551,7 +650,7 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
             unit: '%',
             min: 80,
             max: 100,
-            hint: 'Normal ≥95%',
+            hint: 'Normal ≥95%  ·  Critical <92%',
             trackColor: _spo2Color(_spo2),
             onChanged: (v) => setState(() => _spo2 = v),
           ),
@@ -562,7 +661,7 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
             unit: 'ms',
             min: 5,
             max: 100,
-            hint: 'Normal >50 ms',
+            hint: 'Normal ≥50 ms (M)  ·  ≥45 ms (F)',
             trackColor: _hrvColor(_hrv),
             onChanged: (v) => setState(() => _hrv = v),
           ),
@@ -695,14 +794,14 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   }
 
   Color _spo2Color(double v) {
-    if (v < 90) return AppColors.danger;
+    if (v < 92) return AppColors.danger;
     if (v < 95) return AppColors.warning;
     return AppColors.success;
   }
 
   Color _hrvColor(double v) {
     if (v < 20) return AppColors.danger;
-    if (v < 50) return AppColors.warning;
+    if (v < 45) return AppColors.warning;  // covers both male(<50) and female(<45) warn zones
     return AppColors.success;
   }
 
@@ -902,6 +1001,130 @@ class _SliderRow extends StatelessWidget {
             ),
           ),
           Text(hint, style: AppTextStyles.caption),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Mini chart card (one per vital) ───────────────────────────────────────
+
+class _MiniChart extends StatelessWidget {
+  final String label;
+  final String unit;
+  final Color color;
+  final List<FlSpot> spots;
+  final double minY;
+  final double maxY;
+  final double? currentValue;
+  final String normalRange;
+  final bool hasData;
+
+  const _MiniChart({
+    required this.label,
+    required this.unit,
+    required this.color,
+    required this.spots,
+    required this.minY,
+    required this.maxY,
+    required this.normalRange,
+    this.currentValue,
+    this.hasData = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.bgLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Label row
+          Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTextStyles.caption
+                      .copyWith(fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          // Current value
+          Text(
+            currentValue != null
+                ? '${currentValue!.toStringAsFixed(0)} $unit'
+                : '—',
+            style: AppTextStyles.h2.copyWith(color: color, fontSize: 17),
+          ),
+          const SizedBox(height: 6),
+          // Line chart
+          SizedBox(
+            height: 58,
+            child: hasData
+                ? LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(
+                        leftTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        topTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      minX: 0,
+                      maxX: (spots.length - 1).toDouble(),
+                      minY: minY,
+                      maxY: maxY,
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: color,
+                          barWidth: 2,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: color.withValues(alpha: 0.10),
+                          ),
+                        ),
+                      ],
+                    ),
+                    duration: Duration.zero,
+                  )
+                : Center(
+                    child: Text('No data yet',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textSecondary)),
+                  ),
+          ),
+          const SizedBox(height: 4),
+          // Normal range label
+          Text(
+            normalRange,
+            style: AppTextStyles.caption.copyWith(
+              fontSize: 9,
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );

@@ -25,6 +25,11 @@ class _CardivAppState extends ConsumerState<CardivApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _writeUserProfileForBackground();
+    // Reconnect to the last BLE device after the widget tree is ready.
+    // Handles the case where the app was killed and relaunched.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(bleServiceProvider).reconnectFromPrefs();
+    });
   }
 
   @override
@@ -42,6 +47,9 @@ class _CardivAppState extends ConsumerState<CardivApp>
       _writeUserProfileForBackground();
       // Push any reports the background isolate queued to Firestore
       ref.read(analysisHistoryProvider.notifier).syncPendingReports();
+      // Reconnect BLE if connection dropped while app was in background
+      final ble = ref.read(bleServiceProvider);
+      if (!ble.isConnected) ble.reconnectFromPrefs();
     }
   }
 
