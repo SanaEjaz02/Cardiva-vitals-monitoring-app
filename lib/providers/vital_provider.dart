@@ -14,6 +14,11 @@ final cloudServiceProvider = Provider<CloudService>((ref) => CloudService());
 
 final bleServiceProvider = Provider<BleService>((ref) {
   final svc = BleService();
+  // Keep bleConnectedProvider in sync whenever BLE connection state changes,
+  // including during auto-reconnect (no manual UI intervention needed).
+  svc.onConnectionChanged = (connected) {
+    ref.read(bleConnectedProvider.notifier).state = connected;
+  };
   ref.onDispose(svc.dispose);
   return svc;
 });
@@ -29,19 +34,20 @@ final latestReadingProvider = StreamProvider<VitalReading>((ref) {
 // ── Derived health event ─────────────────────────────────────────────────────
 final healthEventProvider = Provider<AsyncValue<HealthEvent>>((ref) {
   return ref.watch(latestReadingProvider).whenData((reading) {
-    final event = HealthStatusEngine.analyze(reading);
+    final user = ref.read(userProvider);
+    final gender = (user?.gender ?? 'male').toLowerCase();
+
+    // Rule-based classification with gender-adjusted WHO/AHA/ESC thresholds
+    final event = HealthStatusEngine.analyze(reading, gender: gender);
 
     // Side-effects — all fire-and-forget; never block UI
-    final user = ref.read(userProvider);
     final userId = user?.id ?? 'demo-user-001';
     final cloud = ref.read(cloudServiceProvider);
 
     cloud.saveVitalReading(reading, userId).catchError((_) {});
     cloud.saveHealthEvent(event, userId).catchError((_) {});
 
-    // Class 1 (emergency) and Class 2 (fall alert) both require immediate
-    // contact notification — vitalsAlert (Class 3) is handled separately
-    // via the result screen where the user confirms before sending.
+    // Class 1 (emergency) and Class 2 (fall alert): immediate contact notification
     if (event.alertClass.requiresAction) {
       EmergencyTrigger.handle(
         event: event,

@@ -280,6 +280,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
         status: rrStatus(avgRr),
         dataPoints: records.map((r) => r.respirationRate).toList(),
       ),
+      const SizedBox(height: 10),
+      _EventsCard(records: records),
     ];
   }
 
@@ -925,6 +927,97 @@ class _MonthlyChart extends StatelessWidget {
                 : const Center(
                     child: Text('No data for this month',
                         style: TextStyle(color: AppColors.textSecondary))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Activity & Events card ────────────────────────────────────────────────────
+
+class _EventsCard extends StatelessWidget {
+  final List<AnalysisRecord> records;
+  const _EventsCard({required this.records});
+
+  String _actLabel(String a) => switch (a) {
+    'walking'   => 'Walking',
+    'running'   => 'Running',
+    'lyingDown' => 'Lying Down',
+    _           => 'Resting',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final falls = records.where((r) => r.fallDetected).length;
+
+    final actCounts = <String, int>{};
+    for (final r in records) {
+      actCounts[r.activity] = (actCounts[r.activity] ?? 0) + 1;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.shadowSm,
+              blurRadius: 12,
+              offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Activity & Events',
+              style: AppTextStyles.body
+                  .copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: actCounts.entries
+                .map((e) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBg,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                            color: AppColors.primary
+                                .withValues(alpha: 0.25)),
+                      ),
+                      child: Text(
+                        '${_actLabel(e.key)} (${e.value})',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.primary),
+                      ),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: falls > 0
+                ? [
+                    const Icon(Icons.warning_rounded,
+                        color: AppColors.danger, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$falls Fall Event${falls > 1 ? 's' : ''} Detected',
+                      style: AppTextStyles.body.copyWith(
+                          color: AppColors.danger,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ]
+                : [
+                    const Icon(Icons.shield_outlined,
+                        color: AppColors.success, size: 16),
+                    const SizedBox(width: 6),
+                    Text('No falls detected',
+                        style: AppTextStyles.caption),
+                  ],
           ),
         ],
       ),

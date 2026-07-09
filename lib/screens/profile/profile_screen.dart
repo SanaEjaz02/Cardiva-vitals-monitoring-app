@@ -185,11 +185,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           }
           if (mounted) setState(() => _photoPath = photoPath);
           if (updatedProfile != null) {
-            // Save immediately so UI updates without waiting for upload
+            // Update Riverpod state immediately so UI reflects changes at once
             ref.read(userProvider.notifier).updateProfile(updatedProfile);
-            await prefs.setString(
-                'user_profile_$uid', jsonEncode(updatedProfile.toJson()));
-            // Upload photo to Firebase Storage in background
+            final json = updatedProfile.toJson();
+            await prefs.setString('user_profile_$uid', jsonEncode(json));
+            // Always sync to Firestore + RTDB so server data doesn't overwrite
+            // local changes on the next app restart (_syncRtdb runs on every launch).
+            FirestoreService.saveProfile(json).catchError((_) {});
+            RealtimeDatabaseService.saveUserProfile(json);
+            // Upload photo to Firebase Storage in background if a new one was picked
             if (photoPath != null) {
               StorageService.uploadProfilePhoto(File(photoPath))
                   .then((uploadedUrl) {
@@ -197,10 +201,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   final withPhoto =
                       updatedProfile.copyWith(photoUrl: uploadedUrl);
                   ref.read(userProvider.notifier).updateProfile(withPhoto);
-                  FirestoreService.saveProfile(withPhoto.toJson())
-                      .catchError((_) {});
+                  final photoJson = withPhoto.toJson();
+                  FirestoreService.saveProfile(photoJson).catchError((_) {});
+                  RealtimeDatabaseService.saveUserProfile(photoJson);
                   prefs.setString(
-                      'user_profile_$uid', jsonEncode(withPhoto.toJson()));
+                      'user_profile_$uid', jsonEncode(photoJson));
                 }
               });
             }
@@ -1020,19 +1025,28 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           final weightKg =
                               double.tryParse(_weightCtrl.text) ??
                                   existing?.weightKg ?? 70.0;
-                          final updated = UserProfile(
-                            id: existing?.id ?? 'guest',
-                            name: _nameCtrl.text.trim(),
-                            email: existing?.email ?? '',
-                            phone: existing?.phone ?? '',
-                            dateOfBirth: _dob ??
-                                existing?.dateOfBirth ??
-                                DateTime(1990),
-                            gender: _gender,
-                            bloodGroup: _bloodGroup,
-                            heightCm: heightCm,
-                            weightKg: weightKg,
-                          );
+                          // Use copyWith so role, monitoredPatientId,
+                          // bandId, photoUrl are preserved from existing profile.
+                          final updated = existing != null
+                              ? existing.copyWith(
+                                  name: _nameCtrl.text.trim(),
+                                  dateOfBirth: _dob ?? existing.dateOfBirth,
+                                  gender: _gender,
+                                  bloodGroup: _bloodGroup,
+                                  heightCm: heightCm,
+                                  weightKg: weightKg,
+                                )
+                              : UserProfile(
+                                  id: 'guest',
+                                  name: _nameCtrl.text.trim(),
+                                  email: '',
+                                  phone: '',
+                                  dateOfBirth: _dob ?? DateTime(1990),
+                                  gender: _gender,
+                                  bloodGroup: _bloodGroup,
+                                  heightCm: heightCm,
+                                  weightKg: weightKg,
+                                );
                           // Close immediately — onSave runs in background
                           nav.pop();
                           widget.onSave(

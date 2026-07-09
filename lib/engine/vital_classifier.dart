@@ -5,8 +5,9 @@ import '../models/vital_status.dart';
 class VitalClassifier {
   VitalClassifier._();
 
-  static VitalStatus classifyHeartRate(double hr, ActivityType activity) {
-    final t = VitalThresholds.hrThresholdsFor(activity);
+  static VitalStatus classifyHeartRate(double hr, ActivityType activity,
+      {String gender = 'male'}) {
+    final t = VitalThresholds.hrThresholdsFor(activity, gender: gender);
     if (hr <= t['emergencyLow']! || hr >= t['emergencyHigh']!) {
       return VitalStatus.emergency;
     }
@@ -29,10 +30,10 @@ class VitalClassifier {
     return VitalStatus.normal;
   }
 
-  static VitalStatus classifyHRV(double hrv) {
-    if (hrv < VitalThresholds.hrvWarningLow) return VitalStatus.emergency;
-    if (hrv < VitalThresholds.hrvStableLow) return VitalStatus.warning;
-    if (hrv <= VitalThresholds.hrvNormal) return VitalStatus.stable;
+  static VitalStatus classifyHRV(double hrv, {String gender = 'male'}) {
+    if (hrv < VitalThresholds.hrvWarningLowFor(gender)) return VitalStatus.emergency;
+    if (hrv < VitalThresholds.hrvStableLowFor(gender)) return VitalStatus.warning;
+    if (hrv <= VitalThresholds.hrvNormalFor(gender)) return VitalStatus.stable;
     return VitalStatus.normal;
   }
 

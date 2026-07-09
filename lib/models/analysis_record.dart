@@ -8,6 +8,8 @@ class AnalysisRecord {
   final double spo2;
   final double hrv;
   final double respirationRate;
+  final String activity;      // ActivityType.name e.g. 'resting', 'walking'
+  final bool fallDetected;
 
   const AnalysisRecord({
     required this.id,
@@ -17,6 +19,8 @@ class AnalysisRecord {
     required this.spo2,
     required this.hrv,
     required this.respirationRate,
+    this.activity = 'resting',
+    this.fallDetected = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +31,8 @@ class AnalysisRecord {
         'spo2': spo2,
         'hrv': hrv,
         'respirationRate': respirationRate,
+        'activity': activity,
+        'fallDetected': fallDetected,
       };
 
   factory AnalysisRecord.fromJson(Map<String, dynamic> json) => AnalysisRecord(
@@ -38,5 +44,7 @@ class AnalysisRecord {
         spo2: (json['spo2'] as num).toDouble(),
         hrv: (json['hrv'] as num).toDouble(),
         respirationRate: (json['respirationRate'] as num).toDouble(),
+        activity: json['activity'] as String? ?? 'resting',
+        fallDetected: json['fallDetected'] as bool? ?? false,
       );
 }

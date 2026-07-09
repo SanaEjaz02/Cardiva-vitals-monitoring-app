@@ -16,7 +16,7 @@ import 'user_provider.dart';
 import 'vital_provider.dart';
 
 // ── Interval setting (minutes) ─────────────────────────────────────────────
-final analysisIntervalMinProvider = StateProvider<int>((ref) => 120);
+final analysisIntervalMinProvider = StateProvider<int>((ref) => 10);
 
 // ── History ────────────────────────────────────────────────────────────────
 final analysisHistoryProvider =
@@ -144,7 +144,30 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
   bool get isAnalyzing => _analyzing;
 
   AnalysisHistoryNotifier(this._ref) : super([]) {
+    _listenForThresholdAlerts();
     _init();
+  }
+
+  // Listens to every incoming reading and fires a threshold-based notification
+  // between ML analysis intervals (max once per 2 minutes per alert type).
+  DateTime? _lastThresholdAlertAt;
+  void _listenForThresholdAlerts() {
+    _ref.listen(healthEventProvider, (_, next) {
+      final event = next.valueOrNull;
+      if (event == null) return;
+      if (event.alertClass == AlertClass.vitalsAlert ||
+          event.alertClass == AlertClass.fallAlert) {
+        final now = DateTime.now();
+        if (_lastThresholdAlertAt == null ||
+            now.difference(_lastThresholdAlertAt!) > const Duration(minutes: 2)) {
+          _lastThresholdAlertAt = now;
+          NotificationService.showWarningNotification(
+            '⚠️ ${event.alertClass.label}',
+            event.statusMessage,
+          ).catchError((_) {});
+        }
+      }
+    });
   }
 
   /// Call this when a new user logs in to ensure stale data from the previous
@@ -302,6 +325,8 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
         spo2: reading.spO2,
         hrv: reading.hrv,
         respirationRate: reading.respirationRate,
+        activity: reading.activity.name,
+        fallDetected: reading.fallDetected,
       ));
 
       // Push latest vitals to Firebase for linked attendants
@@ -445,6 +470,7 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
     double accelX = 0.0,
     double accelY = 9.8,
     double accelZ = 0.0,
+    bool fallDetected = false,
   }) async {
     final user = _ref.read(userProvider);
 
@@ -471,6 +497,8 @@ class AnalysisHistoryNotifier extends StateNotifier<List<AnalysisRecord>> {
       spo2: spo2,
       hrv: hrv,
       respirationRate: respirationRate,
+      activity: activity,
+      fallDetected: fallDetected,
     ));
 
     // Push latest vitals to Firebase for linked attendants
