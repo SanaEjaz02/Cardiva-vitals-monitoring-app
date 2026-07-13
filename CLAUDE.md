@@ -151,6 +151,8 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
+- `2026-06-28` **Hafiza Sana Awan**: update
+- `2026-06-25` **Hafiza Sana Awan**: docs: update activity log
 - `2026-06-25` **Hafiza Sana Awan**: chore: app icon assets and icon generation tool
 - `2026-06-25` **Hafiza Sana Awan**: docs(thesis): complete Ch5-7, IEEE references, formatting & abbreviations
 - `2026-06-24` **Hafiza Sana Awan**: Merge remote-tracking branch 'origin/main' into feature-new-screens-and-ndk-fix
@@ -164,6 +166,4 @@ flutter analyze              # lint check
 - `2026-05-24` **Hafiza Sana Awan**: Resolved merge conflicts
 - `2026-05-21` **KhansaBatool-54**: Vitals screen And Report Timer Setting
 - `2026-05-20` **Hafiza Sana Awan**: Command Line Setup
-- `2026-05-20` **Hafiza Sana Awan**: Command line setup
-- `2026-05-20` **KhansaBatool-54**: Bck navigation , AI chatbot and profil setup
 <!-- ACTIVITY:END -->
