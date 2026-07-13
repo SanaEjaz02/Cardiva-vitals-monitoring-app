@@ -151,19 +151,19 @@ flutter analyze              # lint check
 *(Auto-updated after every git commit — shows who did what and when)*
 
 <!-- ACTIVITY:START -->
-- `2026-06-28` **Hafiza Sana Awan**: update
-- `2026-06-25` **Hafiza Sana Awan**: docs: update activity log
-- `2026-06-25` **Hafiza Sana Awan**: chore: app icon assets and icon generation tool
-- `2026-06-25` **Hafiza Sana Awan**: docs(thesis): complete Ch5-7, IEEE references, formatting & abbreviations
-- `2026-06-24` **Hafiza Sana Awan**: Merge remote-tracking branch 'origin/main' into feature-new-screens-and-ndk-fix
-- `2026-06-24` **Hafiza Sana Awan**: docs: add thesis document and progress notes
-- `2026-06-24` **KhansaBatool-54**: APP Icon Setup
-- `2026-06-21` **KhansaBatool-54**: Password reset setup
-- `2026-06-18` **Hafiza Sana Awan**:  screen setup
-- `2026-06-18` **Hafiza Sana Awan**: small setup changes
-- `2026-06-18` **KhansaBatool-54**: Bluetooth connection with band and hardware data retreival
-- `2026-06-18` **Hafiza Sana Awan**: new changes
-- `2026-05-24` **Hafiza Sana Awan**: Resolved merge conflicts
-- `2026-05-21` **KhansaBatool-54**: Vitals screen And Report Timer Setting
-- `2026-05-20` **Hafiza Sana Awan**: Command Line Setup
+- `2026-07-09` **Hafiza Sana Awan**: Update CLAUDE.md, thesis, and generated plugin files
+- `2026-06-30` **KhansaBatool-54**: Gradle issue resolve
+- `2026-06-30` **KhansaBatool-54**: Final app Settings with bluetooth setup at initial setup screen
+- `2026-06-29` **KhansaBatool-54**:  Last few changes
+- `2026-06-29` **KhansaBatool-54**: SOS setup
+- `2026-06-29` **KhansaBatool-54**: fix: emergency alerts, chat delete, and navigation bugs
+- `2026-06-29` **KhansaBatool-54**: New App Settings
+- `2026-06-29` **KhansaBatool-54**: new setup
+- `2026-06-28` **KhansaBatool-54**: RTDB setup
+- `2026-06-26` **KhansaBatool-54**: Chat Session
+- `2026-06-26` **KhansaBatool-54**: Chat session added
+- `2026-06-25` **Hafiza Sana Awan**: Merge branch 'main' of https://github.com/SanaEjaz02/Cardiva-vitals-monitoring-app :wq# the commit.
+- `2026-06-25` **Hafiza Sana Awan**: icon setup
+- `2026-06-25` **Hafiza Sana Awan**: Merge remote changes from origin/main
+- `2026-06-25` **Hafiza Sana Awan**: feat: revamp splash screen with multi-stage ECG animation
 <!-- ACTIVITY:END -->
