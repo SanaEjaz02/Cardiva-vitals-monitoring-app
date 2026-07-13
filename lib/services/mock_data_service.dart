@@ -28,7 +28,7 @@ class MockDataService {
     _controller.close();
   }
 
-  // ── Debug injection methods (exposed for Debug Panel in Profile) ──────────
+  // ── Debug injection methods ───────────────────────────────────────────────
 
   void injectNormal() => _controller.add(_generateNormal());
 
@@ -39,6 +39,9 @@ class MockDataService {
         respirationRate: 26,
         activity: ActivityType.resting,
         fallDetected: false,
+        accelX: _random.nextDouble() * 2 - 1,
+        accelY: 9.8 + _random.nextDouble() * 0.5,
+        accelZ: _random.nextDouble() * 2 - 1,
       ));
 
   void injectEmergency() => _controller.add(VitalReading(
@@ -48,22 +51,27 @@ class MockDataService {
         respirationRate: 32,
         activity: ActivityType.resting,
         fallDetected: false,
+        accelX: _random.nextDouble() * 2 - 1,
+        accelY: 9.8 + _random.nextDouble() * 0.5,
+        accelZ: _random.nextDouble() * 2 - 1,
       ));
 
+  // Fall: sudden large acceleration spike then near-zero (free-fall then impact)
   void injectFall() => _controller.add(VitalReading(
-        heartRate: 80,
-        spO2: 96,
-        hrv: 55,
-        respirationRate: 16,
+        heartRate: 95,
+        spO2: 94,
+        hrv: 28,
+        respirationRate: 22,
         activity: ActivityType.resting,
         fallDetected: true,
+        accelX: 28 + _random.nextDouble() * 10,
+        accelY: 1.5 + _random.nextDouble() * 1.5,
+        accelZ: _random.nextDouble() * 8,
       ));
 
   // ── Internal generators ───────────────────────────────────────────────────
 
   VitalReading _generate() {
-    // Every 200th reading (~6 min) injects low SpO2 to allow manual emergency testing.
-    // Use the debug panel buttons (injectWarning / injectEmergency) for on-demand testing.
     if (_readingCount % 200 == 0 && _readingCount > 0) {
       return VitalReading(
         heartRate: 78,
@@ -72,12 +80,16 @@ class MockDataService {
         respirationRate: 15,
         activity: ActivityType.resting,
         fallDetected: false,
+        accelX: _random.nextDouble() * 2 - 1,
+        accelY: 9.8 + _random.nextDouble() * 0.5,
+        accelZ: _random.nextDouble() * 2 - 1,
       );
     }
     return _generateNormal();
   }
 
   VitalReading _generateNormal() {
+    // Realistic resting wrist accel: gravity mostly in Y, small noise from movement
     return VitalReading(
       heartRate: 60 + _random.nextDouble() * 40,
       spO2: 95 + _random.nextDouble() * 5,
@@ -85,6 +97,9 @@ class MockDataService {
       respirationRate: 12 + _random.nextDouble() * 8,
       activity: ActivityType.resting,
       fallDetected: false,
+      accelX: _random.nextDouble() * 2.0 - 1.0,
+      accelY: 9.0 + _random.nextDouble() * 1.6,
+      accelZ: _random.nextDouble() * 2.0 - 1.0,
     );
   }
 }

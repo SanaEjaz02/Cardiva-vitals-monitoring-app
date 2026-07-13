@@ -99,7 +99,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           child: Container(
             width: 72,
             height: 72,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.primaryBg,
               shape: BoxShape.circle,
             ),
@@ -252,10 +252,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               Text('How to reset your password:',
                   style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
-              _Step(n: '1', text: 'Open the email from Cardiva'),
-              _Step(n: '2', text: 'Tap "Reset Password" in the email'),
-              _Step(n: '3', text: 'Enter your new password on the page that opens'),
-              _Step(n: '4', text: 'Come back and sign in with your new password'),
+              const _Step(n: '1', text: 'Open the email from Cardiva'),
+              const _Step(n: '2', text: 'Tap "Reset Password" in the email'),
+              const _Step(n: '3', text: 'Enter your new password on the page that opens'),
+              const _Step(n: '4', text: 'Come back and sign in with your new password'),
             ],
           ),
         ),
@@ -287,8 +287,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Container(
           width: 88,
           height: 88,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F0FE),
+          decoration: const BoxDecoration(
+            color: Color(0xFFE8F0FE),
             shape: BoxShape.circle,
           ),
           child: const Center(
@@ -326,10 +326,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               Text('To change your Google password:',
                   style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
-              _Step(n: '1', text: 'Open myaccount.google.com'),
-              _Step(n: '2', text: 'Go to Security → How you sign in'),
-              _Step(n: '3', text: 'Tap Password and follow the steps'),
-              _Step(n: '4', text: 'Come back and sign in with Google as usual'),
+              const _Step(n: '1', text: 'Open myaccount.google.com'),
+              const _Step(n: '2', text: 'Go to Security → How you sign in'),
+              const _Step(n: '3', text: 'Tap Password and follow the steps'),
+              const _Step(n: '4', text: 'Come back and sign in with Google as usual'),
             ],
           ),
         ),

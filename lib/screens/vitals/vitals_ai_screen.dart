@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'package:fl_chart/fl_chart.dart';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/alert_class.dart';
 import '../../models/vital_reading.dart';
 import '../../providers/analysis_provider.dart';
 import '../../providers/vital_provider.dart';
-import '../../services/notification_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../report/health_report_screen.dart';
@@ -34,14 +33,16 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   double _rr = 12;
   ActivityType _activity = ActivityType.resting;
 
-  // ── Accelerometer (internal — updated from live reading, not exposed in UI) ──
+  // ── Accelerometer — updated from live reading, passed to analyzeNow() ───────
   double _ax = 0.0;
   double _ay = 9.8;
   double _az = 0.0;
 
   bool _loading = false;
   bool _liveMode = true;
-  bool _emergencyDialogOpen = false;
+
+  final _random = Random();
+  Timer? _randomTimer;
 
   @override
   void initState() {
@@ -65,23 +66,29 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
           _activity = reading.activity;
         });
       } else {
-        // Band not connected — use the last dashboard analysis values
-        final last = ref.read(lastAnalysisProvider);
-        if (last != null && mounted) {
-          setState(() {
-            _hr = last.heartRate.clamp(30, 220);
-            _spo2 = last.spo2.clamp(80, 100);
-            _hrv = last.hrv.clamp(5, 100);
-            _rr = last.respirationRate.clamp(3, 35);
-          });
-        }
+        // Band not connected — seed with random values and refresh every 30 s
+        _applyRandomVitals();
+        _randomTimer = Timer.periodic(
+          const Duration(seconds: 30),
+          (_) => _applyRandomVitals(),
+        );
       }
+    });
+  }
 
+  void _applyRandomVitals() {
+    if (!mounted) return;
+    setState(() {
+      _hr = 60 + _random.nextDouble() * 40;
+      _spo2 = 95 + _random.nextDouble() * 5;
+      _hrv = 40 + _random.nextDouble() * 40;
+      _rr = 12 + _random.nextDouble() * 8;
     });
   }
 
   @override
   void dispose() {
+    _randomTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -124,65 +131,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     }
   }
 
-  // ── Emergency response (from live band event) ─────────────────────────────
-  void _handleLiveEmergency() {
-    if (_emergencyDialogOpen || !mounted) return;
-    _emergencyDialogOpen = true;
-
-    NotificationService.showEmergencyNotification(
-      'CARDIVA Emergency',
-      'Critical vitals detected. HR: ${_hr.toStringAsFixed(0)} bpm  ·  SpO₂: ${_spo2.toStringAsFixed(0)}%',
-    ).catchError((_) {});
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        backgroundColor: AppColors.dangerBg,
-        title: Row(
-          children: [
-            const Icon(Icons.emergency_rounded,
-                color: AppColors.danger, size: 24),
-            const SizedBox(width: 10),
-            Text('Emergency Detected',
-                style: AppTextStyles.h2.copyWith(color: AppColors.danger)),
-          ],
-        ),
-        content: Text(
-          'Band reporting critical vitals.\n'
-          'HR: ${_hr.toStringAsFixed(0)} bpm  ·  SpO₂: ${_spo2.toStringAsFixed(0)}%\n\n'
-          'Run full AI analysis?',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _emergencyDialogOpen = false;
-            },
-            child: Text('Dismiss',
-                style: AppTextStyles.body
-                    .copyWith(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.danger,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _emergencyDialogOpen = false;
-              _runAnalysis();
-            },
-            child: const Text('Analyze & Alert'),
-          ),
-        ],
-      ),
-    ).then((_) => _emergencyDialogOpen = false);
-  }
 
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -190,28 +138,23 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
   Widget build(BuildContext context) {
     final intervalMin = ref.watch(analysisIntervalMinProvider);
 
-    // Live band → update sliders
+    // Live band → update sliders + accel state
     ref.listen(latestReadingProvider, (_, next) {
       final reading = next.valueOrNull;
       if (reading == null || !mounted || !_liveMode) return;
+      // Cancel random-seed timer as soon as real band data arrives
+      _randomTimer?.cancel();
+      _randomTimer = null;
       setState(() {
         _hr = reading.heartRate.clamp(30, 220);
         _spo2 = reading.spO2.clamp(80, 100);
         _hrv = reading.hrv.clamp(5, 100);
         _rr = reading.respirationRate.clamp(3, 35);
         _activity = reading.activity;
+        _ax = reading.accelX;
+        _ay = reading.accelY;
+        _az = reading.accelZ;
       });
-    });
-
-    // Live health event → only handle emergency dialog here.
-    // Vitals/fall alert notifications are handled globally with debounce
-    // in AnalysisHistoryNotifier._listenForThresholdAlerts().
-    ref.listen(healthEventProvider, (_, next) {
-      final event = next.valueOrNull;
-      if (event == null || !mounted) return;
-      if (event.alertClass == AlertClass.emergency) {
-        _handleLiveEmergency();
-      }
     });
 
     return Scaffold(
@@ -225,9 +168,9 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
               children: [
                 _buildAutoAnalysisCard(intervalMin),
                 const SizedBox(height: 12),
-                _buildTrendChart(),
-                const SizedBox(height: 12),
                 _buildVitalsCard(),
+                const SizedBox(height: 12),
+                _buildMotionCard(),
                 const SizedBox(height: 8),
                 _buildLiveActivityCard(),
                 const SizedBox(height: 8),
@@ -524,106 +467,6 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
     return '${diff.inHours}h ago';
   }
 
-  // ── 4-vital trend charts (2×2 grid, last 10 analysis records) ───────────
-  Widget _buildTrendChart() {
-    final records = ref.watch(analysisHistoryProvider);
-    final recent =
-        records.length > 10 ? records.sublist(records.length - 10) : records;
-    final hasData = recent.length >= 2;
-
-    List<FlSpot> spots(List<double> vals) => vals.isEmpty
-        ? [const FlSpot(0, 0)]
-        : vals
-            .asMap()
-            .entries
-            .map((e) => FlSpot(e.key.toDouble(), e.value))
-            .toList();
-
-    final hrVals   = recent.map((r) => r.heartRate).toList();
-    final spo2Vals = recent.map((r) => r.spo2).toList();
-    final hrvVals  = recent.map((r) => r.hrv).toList();
-    final rrVals   = recent.map((r) => r.respirationRate).toList();
-
-    final spanLabel = hasData
-        ? '${_hhmm(recent.first.timestamp)} – ${_hhmm(recent.last.timestamp)}'
-        : 'Waiting for data…';
-
-    return _Card(
-      title: 'Vitals Trend',
-      icon: Icons.show_chart_rounded,
-      iconColor: AppColors.primary,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(spanLabel, style: AppTextStyles.caption),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniChart(
-                  label: 'Heart Rate',
-                  unit: 'bpm',
-                  color: AppColors.danger,
-                  spots: spots(hrVals),
-                  minY: 40, maxY: 160,
-                  currentValue: hrVals.isNotEmpty ? hrVals.last : null,
-                  normalRange: '60–100 bpm',
-                  hasData: hasData,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MiniChart(
-                  label: 'SpO₂',
-                  unit: '%',
-                  color: AppColors.primary,
-                  spots: spots(spo2Vals),
-                  minY: 85, maxY: 100,
-                  currentValue: spo2Vals.isNotEmpty ? spo2Vals.last : null,
-                  normalRange: '≥95%  ·  crit <92%',
-                  hasData: hasData,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniChart(
-                  label: 'HRV',
-                  unit: 'ms',
-                  color: const Color(0xFF7C3AED),
-                  spots: spots(hrvVals),
-                  minY: 0, maxY: 100,
-                  currentValue: hrvVals.isNotEmpty ? hrvVals.last : null,
-                  normalRange: '≥50 ms (M)  ·  ≥45 (F)',
-                  hasData: hasData,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MiniChart(
-                  label: 'Resp. Rate',
-                  unit: '/min',
-                  color: AppColors.success,
-                  spots: spots(rrVals),
-                  minY: 0, maxY: 35,
-                  currentValue: rrVals.isNotEmpty ? rrVals.last : null,
-                  normalRange: '12–20 /min',
-                  hasData: hasData,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _hhmm(DateTime t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-
   // ── Vitals card ───────────────────────────────────────────────────────────
   Widget _buildVitalsCard() {
     return _Card(
@@ -692,7 +535,7 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
         boxShadow: const [
           BoxShadow(color: AppColors.shadowSm, blurRadius: 16, offset: Offset(0, 2)),
         ],
-        border: Border(left: BorderSide(color: color, width: 4)),
+        border: const Border(left: BorderSide(color: color, width: 4)),
       ),
       child: Row(
         children: [
@@ -700,7 +543,7 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.directions_walk_rounded, color: color, size: 20),
+              const Icon(Icons.directions_walk_rounded, color: color, size: 20),
               const SizedBox(height: 2),
               Text('Activity', style: AppTextStyles.caption),
             ],
@@ -724,6 +567,76 @@ class _VitalsAiScreenState extends ConsumerState<VitalsAiScreen>
         ],
       ),
     );
+  }
+
+  // Motion Data card — same _SliderRow layout as Vital Signs, fully draggable
+  Widget _buildMotionCard() {
+    const skyBlue = Color(0xFF0EA5E9);
+    // Stored internally as m/s²; sliders work in g (÷9.81 / ×9.81)
+    final xG = _ax / 9.81;
+    final yG = _ay / 9.81;
+    final zG = _az / 9.81;
+    return _Card(
+      title: 'Motion Data',
+      icon: Icons.straighten_rounded,
+      iconColor: skyBlue,
+      child: Column(
+        children: [
+          _SliderRow(
+            icon: Icons.swap_horiz_rounded,
+            label: 'Accel X',
+            value: xG.clamp(-2.0, 2.0),
+            unit: 'g',
+            min: -2.0,
+            max: 2.0,
+            hint: 'Normal ~0 g  ·  Side tilt > ±1 g',
+            trackColor: _accelXColor(xG),
+            onChanged: (v) => setState(() => _ax = v * 9.81),
+          ),
+          _SliderRow(
+            icon: Icons.swap_vert_rounded,
+            label: 'Accel Y',
+            value: yG.clamp(-2.0, 2.0),
+            unit: 'g',
+            min: -2.0,
+            max: 2.0,
+            hint: 'Normal ~1 g (gravity)  ·  Freefall: ~0 g',
+            trackColor: _accelYColor(yG),
+            onChanged: (v) => setState(() => _ay = v * 9.81),
+          ),
+          _SliderRow(
+            icon: Icons.rotate_right_rounded,
+            label: 'Accel Z',
+            value: zG.clamp(-2.0, 2.0),
+            unit: 'g',
+            min: -2.0,
+            max: 2.0,
+            hint: 'Normal ~0 g  ·  Forward tilt > ±1 g',
+            trackColor: _accelZColor(zG),
+            onChanged: (v) => setState(() => _az = v * 9.81),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Accel color helpers (green = normal, red = fall / abnormal) ───────────
+
+  // X and Z: normal is near 0g; red when high impact detected
+  Color _accelXColor(double g) {
+    final abs = g.abs();
+    if (abs > 2.0) return AppColors.danger;
+    if (abs > 0.5) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  Color _accelZColor(double g) => _accelXColor(g);
+
+  // Y is the gravity axis: normal ~1g; red near 0 (freefall) or very high (impact)
+  Color _accelYColor(double g) {
+    if (g < 0.2 || g > 2.5) return AppColors.danger;
+    if (g < 0.6 || g > 1.5) return AppColors.warning;
+    return AppColors.success;
   }
 
   Widget _buildLiveFallCard() {
@@ -1001,130 +914,6 @@ class _SliderRow extends StatelessWidget {
             ),
           ),
           Text(hint, style: AppTextStyles.caption),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Mini chart card (one per vital) ───────────────────────────────────────
-
-class _MiniChart extends StatelessWidget {
-  final String label;
-  final String unit;
-  final Color color;
-  final List<FlSpot> spots;
-  final double minY;
-  final double maxY;
-  final double? currentValue;
-  final String normalRange;
-  final bool hasData;
-
-  const _MiniChart({
-    required this.label,
-    required this.unit,
-    required this.color,
-    required this.spots,
-    required this.minY,
-    required this.maxY,
-    required this.normalRange,
-    this.currentValue,
-    this.hasData = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.bgLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Label row
-          Row(
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppTextStyles.caption
-                      .copyWith(fontWeight: FontWeight.w700),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          // Current value
-          Text(
-            currentValue != null
-                ? '${currentValue!.toStringAsFixed(0)} $unit'
-                : '—',
-            style: AppTextStyles.h2.copyWith(color: color, fontSize: 17),
-          ),
-          const SizedBox(height: 6),
-          // Line chart
-          SizedBox(
-            height: 58,
-            child: hasData
-                ? LineChart(
-                    LineChartData(
-                      gridData: const FlGridData(show: false),
-                      titlesData: const FlTitlesData(
-                        leftTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                        topTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                        bottomTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      minX: 0,
-                      maxX: (spots.length - 1).toDouble(),
-                      minY: minY,
-                      maxY: maxY,
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: color,
-                          barWidth: 2,
-                          dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: color.withValues(alpha: 0.10),
-                          ),
-                        ),
-                      ],
-                    ),
-                    duration: Duration.zero,
-                  )
-                : Center(
-                    child: Text('No data yet',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textSecondary)),
-                  ),
-          ),
-          const SizedBox(height: 4),
-          // Normal range label
-          Text(
-            normalRange,
-            style: AppTextStyles.caption.copyWith(
-              fontSize: 9,
-              color: AppColors.textSecondary,
-            ),
-          ),
         ],
       ),
     );

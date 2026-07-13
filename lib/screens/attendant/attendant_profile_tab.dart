@@ -79,7 +79,7 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Sign out',
+            child: const Text('Sign out',
                 style: TextStyle(color: AppColors.danger)),
           ),
         ],
@@ -113,7 +113,7 @@ class _AttendantProfileTabState extends ConsumerState<AttendantProfileTab> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete',
+            child: const Text('Delete',
                 style: TextStyle(
                     color: AppColors.danger, fontWeight: FontWeight.w700)),
           ),

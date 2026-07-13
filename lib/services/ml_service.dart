@@ -6,6 +6,7 @@ import '../models/alert_class.dart';
 import '../models/ml_prediction.dart';
 import '../models/vital_reading.dart';
 import '../models/vital_status.dart';
+import 'accel_buffer.dart';
 
 /// Hybrid inference engine:
 ///
@@ -23,6 +24,9 @@ import '../models/vital_status.dart';
 ///   Class 4 NORMAL       — fall=false + vitals=low-risk
 class MlService {
   MlService._();
+
+  // Single shared buffer — accumulates accel samples across analyze() calls.
+  static final AccelBuffer _accelBuffer = AccelBuffer();
 
   static Future<MlPrediction> analyze({
     required double heartRate,
@@ -62,25 +66,28 @@ class MlService {
       bmi,                // 8  BMI
     ];
 
-    // ── Step 1: ML model inference (PRIMARY) ─────────────────────────────────
-    // usedTrainedModel is true only when the real converted model is in place.
-    // The placeholder always returns 0.0 for normal vitals, so it never
-    // double-fires on top of the threshold check.
+    // ── Step 1: Emergency ML model (vitals risk) ─────────────────────────────
     bool usedTrainedModel = false;
     bool mlVitalsHighRisk = false;
-    bool fallFromModel = false;
 
     try {
       final eScore = _toDouble(emergencyModelScore(features));
-      final fScore = _toDouble(fallModelScore(features));
-      // Threshold 0.8 avoids false positives from placeholder's 0.5/0.6 scores.
-      // The real GBC model's scores will naturally cluster near 0.0 or 1.0.
       mlVitalsHighRisk = eScore >= 0.8;
-      fallFromModel    = fScore >= 0.5;
-      usedTrainedModel = eScore > 0.0; // only claim trained if model fired
-    } catch (_) {
-      // Model unavailable — threshold path below covers classification
-    }
+      usedTrainedModel = eScore > 0.0;
+    } catch (_) {}
+
+    // ── Step 1b: Fall ML model (accelerometer window) ────────────────────────
+    // Add this sample to the sliding window. When 100 samples are ready,
+    // extract the 70 features and run the fall classifier.
+    bool fallFromModel = false;
+    try {
+      final windowReady = _accelBuffer.addSample(accelX, accelY, accelZ);
+      if (windowReady) {
+        final accelFeatures = _accelBuffer.extractAndSlide();
+        final fScore = _toDouble(fallModelScore(accelFeatures));
+        fallFromModel = fScore >= 0.5;
+      }
+    } catch (_) {}
 
     // ── Step 2: Gender-adjusted WHO/AHA/ESC threshold classification ───────
     // Always runs regardless of ML model availability.

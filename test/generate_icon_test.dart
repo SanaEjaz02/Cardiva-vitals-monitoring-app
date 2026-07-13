@@ -61,9 +61,9 @@ class _FullIcon extends StatelessWidget {
           colors: [Color(0xFF0096C7), Color(0xFF023E8A)],
         ),
       ),
-      child: Center(
+      child: const Center(
         child: CustomPaint(
-          size: const Size(780, 340),
+          size: Size(780, 340),
           painter: _EcgPainter(color: Colors.white, strokeWidth: 36),
         ),
       ),
@@ -78,9 +78,9 @@ class _ForegroundIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return const Center(
       child: CustomPaint(
-        size: const Size(560, 240),
+        size: Size(560, 240),
         painter: _EcgPainter(color: Colors.white, strokeWidth: 26),
       ),
     );

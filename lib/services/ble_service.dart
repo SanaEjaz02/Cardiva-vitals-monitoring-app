@@ -1,16 +1,16 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:convert' show utf8;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/vital_reading.dart';
 
 class BleService {
-  // UUIDs must match the ESP32 firmware exactly (sourced from BleManager.java)
+  // UUIDs match ESP32 firmware (BLEDevice::init("Cardiva"), SERVICE_UUID, VITALS_CHAR_UUID)
   static const _svcUuid  = '12345678-1234-5678-1234-56789abcdef0';
   static const _charUuid = '12345678-1234-5678-1234-56789abcdef1';
 
-  static const targetDeviceName = 'Cardiva-ESP32';
+  static const targetDeviceName = 'Cardiva';
 
   final _controller = StreamController<VitalReading>.broadcast();
   StreamSubscription<List<int>>? _notifSub;
@@ -47,6 +47,9 @@ class BleService {
         onConnectionChanged?.call(true);
       }
     });
+
+    // Android needs a moment after GATT connection before services are stable.
+    await Future.delayed(const Duration(milliseconds: 600));
 
     final services = await device.discoverServices();
 
@@ -190,30 +193,53 @@ class BleService {
   static String _norm(String s) =>
       s.trim().toLowerCase().replaceAll(RegExp(r'[{}]'), '');
 
-  // JSON shape: { "hr": 78.0, "spo2": 97.5, "hrv": 42.3, "rr": 16.0, "act": "Walking", "fall": false }
+  // Firmware CSV format — two supported variants:
+  //   4-field: "HR,SpO2,HRV,Resp"
+  //   8-field: "HR,SpO2,HRV,Resp,AcX,AcY,AcZ,Activity"
+  // AcX/Y/Z (if present) are in g-units → converted to m/s² (* 9.81).
+  // Activity (if present): STILL | MOVING | FALL
   VitalReading? _parse(List<int> bytes) {
     try {
-      final raw = utf8.decode(bytes);
+      final raw = utf8.decode(bytes).trim();
       debugPrint('[BLE] Packet: $raw');
-      final map = json.decode(raw) as Map<String, dynamic>;
+      final fields = raw.split(',');
+      if (fields.length < 4) {
+        debugPrint('[BLE] Bad CSV (expected ≥4 fields, got ${fields.length})');
+        return null;
+      }
 
-      final hr   = (map['hr']   as num?)?.toDouble() ?? 0;
-      final spo2 = (map['spo2'] as num?)?.toDouble() ?? 0;
+      final hr   = double.tryParse(fields[0]) ?? 0.0;
+      final spo2 = double.tryParse(fields[1]) ?? 0.0;
+      final hrv  = double.tryParse(fields[2]) ?? 0.0;
+      final rr   = double.tryParse(fields[3]) ?? 0.0;
 
-      final actStr = (map['act'] as String? ?? '').toLowerCase();
-      final activity = actStr == 'walking'
-          ? ActivityType.walking
-          : actStr == 'active'
-              ? ActivityType.running
-              : ActivityType.resting;
+
+      // Extended fields — present only when firmware sends accel (+ optional activity)
+      double axG = 0.0, ayG = 1.0, azG = 0.0;
+      bool fallDetected = false;
+      ActivityType activity = ActivityType.resting;
+
+      if (fields.length >= 7) {
+        axG = double.tryParse(fields[4]) ?? 0.0;
+        ayG = double.tryParse(fields[5]) ?? 1.0;
+        azG = double.tryParse(fields[6]) ?? 0.0;
+      }
+      if (fields.length >= 8) {
+        final actStr = fields[7].trim().toUpperCase();
+        fallDetected = actStr == 'FALL';
+        activity = actStr == 'MOVING' ? ActivityType.walking : ActivityType.resting;
+      }
 
       return VitalReading(
         heartRate:       hr,
         spO2:            spo2,
-        hrv:             (map['hrv'] as num?)?.toDouble() ?? 0,
-        respirationRate: (map['rr']  as num?)?.toDouble() ?? 0,
+        hrv:             hrv,
+        respirationRate: rr,
         activity:        activity,
-        fallDetected:    map['fall'] as bool? ?? false,
+        fallDetected:    fallDetected,
+        accelX:          axG * 9.81,
+        accelY:          ayG * 9.81,
+        accelZ:          azG * 9.81,
       );
     } catch (e) {
       debugPrint('[BLE] Parse error: $e');

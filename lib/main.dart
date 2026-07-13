@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
-import 'services/background_service.dart';
 import 'services/notification_service.dart';
 import 'services/realtime_database_service.dart';
 

@@ -178,7 +178,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     child: Center(
                       child: isGuardian
                         ? const SizedBox.shrink()
-                        : StepIndicator(current: 1, total: 3),
+                        : const StepIndicator(current: 1, total: 3),
                     ),
                   ),
                   const SizedBox(width: 40),

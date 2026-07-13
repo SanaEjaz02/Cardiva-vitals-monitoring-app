@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/alert_class.dart';
 import '../models/chat_message.dart';
 import '../models/health_event.dart';
@@ -76,28 +75,8 @@ class EmergencyTrigger {
             : 'emergency';
         final notifTitle = '🚨 CARDIVA ${event.alertClass.label}';
 
-        // Build a short SMS text (no emojis — some carriers strip them).
-        final smsText = 'CARDIVA ALERT\n'
-            'Patient: $userName\n'
-            'Status: ${event.alertClass.label}\n'
-            'HR: ${r.heartRate.toStringAsFixed(0)} BPM  '
-            'SpO2: ${r.spO2.toStringAsFixed(0)}%\n'
-            '$mapsLink';
-
         for (final c in contacts) {
           final gUid = (c['uid'] as String? ?? '').trim();
-          final phone = (c['phone'] as String? ?? '').trim();
-
-          // SMS: all contacts with a phone number, registered or not.
-          if (phone.isNotEmpty) {
-            final smsUri = Uri(
-              scheme: 'sms',
-              path: phone,
-              queryParameters: {'body': smsText},
-            );
-            launchUrl(smsUri, mode: LaunchMode.platformDefault)
-                .catchError((_) => false);
-          }
 
           // In-app chat + RTDB push: only registered (linked) guardians.
           if (gUid.isEmpty) continue;

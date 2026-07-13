@@ -12,19 +12,19 @@ class LocationService {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw LocationException('Location services are disabled on this device.');
+      throw const LocationException('Location services are disabled on this device.');
     }
 
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        throw LocationException('Location permission was denied.');
+        throw const LocationException('Location permission was denied.');
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      throw LocationException(
+      throw const LocationException(
           'Location permission permanently denied. Enable it in Settings.');
     }
 

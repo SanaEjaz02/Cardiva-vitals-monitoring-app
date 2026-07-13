@@ -41,7 +41,9 @@ class LiveMonitorScreen extends ConsumerWidget {
             // ── Vitals grid ──────────────────────────────────────────
             Expanded(
               child: readingAsync.when(
-                loading: () => _NoDeviceState(),
+                loading: () => bleService.isConnected
+                    ? _WaitingForDataState()
+                    : _NoDeviceState(),
                 error: (e, _) => Center(
                   child: Text('Error: $e', style: AppTextStyles.caption),
                 ),
@@ -177,15 +179,6 @@ class _VitalsGrid extends StatelessWidget {
 
   const _VitalsGrid({required this.reading});
 
-  String get _activityLabel {
-    switch (reading.activity) {
-      case ActivityType.walking:   return 'Walking';
-      case ActivityType.running:   return 'Running';
-      case ActivityType.lyingDown: return 'Lying Down';
-      case ActivityType.resting:   return 'Resting';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final updatedAt =
@@ -229,7 +222,7 @@ class _VitalsGrid extends StatelessWidget {
             _VitalCard(
               icon: Icons.graphic_eq_rounded,
               color: AppColors.secondary,
-              label: 'HRV (SDNN)',
+              label: 'HRV (RMSSD)',
               value: reading.hrv.toStringAsFixed(1),
               unit: 'ms',
             ),
@@ -245,25 +238,37 @@ class _VitalsGrid extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // Activity row
-        _WideCard(
-          icon: Icons.directions_walk_rounded,
-          color: const Color(0xFF7C3AED),
-          label: 'Activity',
-          value: _activityLabel,
-        ),
-
-        const SizedBox(height: 12),
-
-        // Fall detection row
-        _WideCard(
-          icon: reading.fallDetected
-              ? Icons.warning_amber_rounded
-              : Icons.shield_rounded,
-          color: reading.fallDetected ? AppColors.danger : AppColors.success,
-          label: 'Fall Detection',
-          value: reading.fallDetected ? 'FALL DETECTED' : 'No Fall',
-          valueColor: reading.fallDetected ? AppColors.danger : null,
+        // Accelerometer — 3 separate cards matching the vitals grid style
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.95,
+          children: [
+            _VitalCard(
+              icon: Icons.swap_horiz_rounded,
+              color: AppColors.danger,
+              label: 'Accel X',
+              value: (reading.accelX / 9.81).toStringAsFixed(2),
+              unit: 'g',
+            ),
+            _VitalCard(
+              icon: Icons.swap_vert_rounded,
+              color: AppColors.success,
+              label: 'Accel Y',
+              value: (reading.accelY / 9.81).toStringAsFixed(2),
+              unit: 'g',
+            ),
+            _VitalCard(
+              icon: Icons.rotate_right_rounded,
+              color: const Color(0xFF0EA5E9),
+              label: 'Accel Z',
+              value: (reading.accelZ / 9.81).toStringAsFixed(2),
+              unit: 'g',
+            ),
+          ],
         ),
       ],
     );
@@ -347,6 +352,40 @@ class _VitalCard extends StatelessWidget {
   }
 }
 
+// ── Connected but waiting for first packet ────────────────────────────────────
+
+class _WaitingForDataState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                color: AppColors.success,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('Connected', style: AppTextStyles.h2, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(
+              'Waiting for first reading from the band…',
+              style: AppTextStyles.caption,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── No device connected state ─────────────────────────────────────────────────
 
 class _NoDeviceState extends StatelessWidget {
@@ -361,7 +400,7 @@ class _NoDeviceState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.primaryBg,
                 shape: BoxShape.circle,
               ),
@@ -384,64 +423,4 @@ class _NoDeviceState extends StatelessWidget {
   }
 }
 
-// ── Wide card (full width) ────────────────────────────────────────────────────
 
-class _WideCard extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _WideCard({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.bgWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-              color: AppColors.shadowSm,
-              blurRadius: 8,
-              offset: Offset(0, 2)),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: AppTextStyles.caption),
-              Text(
-                value,
-                style: AppTextStyles.body.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: valueColor ?? AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}

@@ -1890,10 +1890,10 @@ class _RenameDialogState extends State<_RenameDialog> {
         controller: _ctrl,
         autofocus: true,
         style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
+        decoration: const InputDecoration(
           hintText: 'Chat name',
-          hintStyle: const TextStyle(color: Colors.white38),
-          enabledBorder: const UnderlineInputBorder(
+          hintStyle: TextStyle(color: Colors.white38),
+          enabledBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: Colors.white24)),
           focusedBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: AppColors.primary)),
@@ -1906,7 +1906,7 @@ class _RenameDialogState extends State<_RenameDialog> {
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
-          child: Text('Save', style: TextStyle(color: AppColors.primary)),
+          child: const Text('Save', style: TextStyle(color: AppColors.primary)),
         ),
       ],
     );

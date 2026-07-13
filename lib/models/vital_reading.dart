@@ -11,6 +11,11 @@ class VitalReading {
   final double respirationRate;
   final ActivityType activity;
   final bool fallDetected;
+  // Raw accelerometer values from the band (m/s²).
+  // Normal resting: ax≈0, ay≈9.8 (gravity), az≈0.
+  final double accelX;
+  final double accelY;
+  final double accelZ;
 
   VitalReading({
     String? id,
@@ -21,6 +26,9 @@ class VitalReading {
     required this.respirationRate,
     required this.activity,
     required this.fallDetected,
+    this.accelX = 0.0,
+    this.accelY = 9.8,
+    this.accelZ = 0.0,
   })  : id = id ?? const Uuid().v4(),
         timestamp = timestamp ?? DateTime.now();
 
@@ -36,6 +44,9 @@ class VitalReading {
           orElse: () => ActivityType.resting,
         ),
         fallDetected: json['fall_detected'] as bool? ?? false,
+        accelX: (json['accel_x'] as num?)?.toDouble() ?? 0.0,
+        accelY: (json['accel_y'] as num?)?.toDouble() ?? 9.8,
+        accelZ: (json['accel_z'] as num?)?.toDouble() ?? 0.0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -47,5 +58,8 @@ class VitalReading {
         'respiration_rate': respirationRate,
         'activity': activity.name,
         'fall_detected': fallDetected,
+        'accel_x': accelX,
+        'accel_y': accelY,
+        'accel_z': accelZ,
       };
 }

@@ -1,31 +1,42 @@
-// PLACEHOLDER — run the conversion script to replace with your trained model:
-//   cd cardiva_ml_models
-//   pip install m2cgen scikit-learn numpy
-//   python convert_to_dart.py
+// PLACEHOLDER — replace by running the conversion script:
 //
-// Description : Fall detection classifier (vitals pattern)
-// Features    : [heart_rate, spo2, hrv, respiration_rate, weight_kg, height_m, bmi]
+//   1. Train model in Colab (Fall_Detection.py) → download fall_model.pkl
+//   2. Place fall_model.pkl in cardiva_ml_models/
+//   3. cd cardiva_ml_models
+//   4. pip install -r requirements.txt
+//   5. python convert_fall_to_dart.py
 //
-// Returns     : 1.0 → fall predicted from vitals pattern
-//               0.0 → no fall predicted
+// Model   : LightGBM or RandomForest (Fall_Detection.py, v9.0)
+// Input   : 70-element feature vector from AccelBuffer.extractAndSlide()
+//           NOT vitals — pure accelerometer window features.
 //
-// Note: accelerometer magnitude heuristic is applied on top of this in MlService.
+// Key feature indices (see AccelBuffer for full list):
+//   [27] mag_mean     [28] mag_std     [29] mag_max     [30] mag_min
+//   [68] impact_ratio (mag_max / mag_mean)
+//   [69] total_energy (Σ x²+y²+z² over window)
+//
+// Returns : 1.0 → Fall  |  0.0 → Not Fall
 
 // ignore_for_file: unused_local_variable
 
-/// Predicts fall risk from vitals pattern alone.
-/// Accelerometer magnitude (>25 or <3 m/s²) is checked separately in MlService.
-/// Input feature order MUST match training: [HR, SpO2, HRV, RR, weight_kg, height_m, BMI]
+/// Placeholder fall classifier using accelerometer window features.
+/// Replace with real model output from convert_fall_to_dart.py.
 double fallModelScore(List<dynamic> input) {
-  final hr  = input.isNotEmpty ? (input[0] as num).toDouble() : 72.0;
-  final hrv = input.length > 2 ? (input[2] as num).toDouble() : 55.0;
-  final bmi = input.length > 6 ? (input[6] as num).toDouble() : 24.0;
+  if (input.length < 70) return 0.0;   // Need full 70-feature vector
 
-  // Sudden high HR + very low HRV is a known pre-fall pattern (esp. in elderly)
-  if (hr > 130 && hrv < 20) return 1.0;
+  final magMean     = (input[27] as num).toDouble();  // mag_mean
+  final magMax      = (input[29] as num).toDouble();  // mag_max
+  final impactRatio = (input[68] as num).toDouble();  // mag_max / mag_mean
+  final totalEnergy = (input[69] as num).toDouble();  // Σ(x²+y²+z²)
 
-  // Obese + tachycardic — elevated fall risk
-  if (bmi >= 35.0 && hr > 110) return 1.0;
+  // Impact signature: sudden spike much larger than baseline (fall impact)
+  if (impactRatio > 4.0 && magMax > 20.0) return 1.0;
+
+  // Free-fall then impact: very low mean (near-zero G), high peak
+  if (magMean < 4.0 && magMax > 15.0) return 1.0;
+
+  // High-energy burst with strong impact ratio
+  if (totalEnergy > 10000.0 && impactRatio > 3.0) return 1.0;
 
   return 0.0;
 }
