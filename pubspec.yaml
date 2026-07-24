@@ -58,6 +58,7 @@ dependencies:
   path: ^1.9.0
   connectivity_plus: ^6.1.4
   file_picker: ^8.1.7
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -79,3 +80,4 @@ flutter:
   assets:
     - .env
     - assets/animations/
+    - assets/audio/
