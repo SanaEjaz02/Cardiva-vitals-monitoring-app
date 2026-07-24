@@ -67,13 +67,13 @@ class MlService {
     ];
 
     // ── Step 1: Emergency ML model (vitals risk) ─────────────────────────────
-    bool usedTrainedModel = false;
-    bool mlVitalsHighRisk = false;
+    bool modelRan = false;         // did the trained model execute at all?
+    bool mlVitalsHighRisk = false; // did it say High Risk?
 
     try {
       final eScore = _toDouble(emergencyModelScore(features));
       mlVitalsHighRisk = eScore >= 0.8;
-      usedTrainedModel = eScore > 0.0;
+      modelRan = true;
     } catch (_) {}
 
     // ── Step 1b: Fall ML model (accelerometer window) ────────────────────────
@@ -131,11 +131,11 @@ class MlService {
     // ── Step 6: Confidence ────────────────────────────────────────────────
     final confidence = _confidence(
       features, bmi, fallDetected, accelFall, alertClass,
-      usedTrainedModel, thresholdHighRisk);
+      modelRan, mlVitalsHighRisk, thresholdHighRisk);
 
     // ── Step 7: Analysis message ──────────────────────────────────────────
     final bmiNote = bmi < 18.5 ? ' (BMI: low)' : bmi >= 30 ? ' (BMI: high)' : '';
-    final src = usedTrainedModel ? '' : ' [rule-based]';
+    final src = modelRan ? '' : ' [rule-based]';
 
     final message = switch (alertClass) {
       AlertClass.emergency =>
@@ -181,13 +181,14 @@ class MlService {
     bool fallDetected,
     bool accelFall,
     AlertClass alertClass,
-    bool usedTrainedModel,
+    bool modelRan,
+    bool mlVitalsHighRisk,
     bool thresholdHighRisk,
   ) {
-    double base = usedTrainedModel ? 78.0 : 68.0;
+    double base = modelRan ? 78.0 : 68.0;
 
     // Agreement between ML and threshold paths boosts confidence
-    if (usedTrainedModel && thresholdHighRisk &&
+    if (mlVitalsHighRisk && thresholdHighRisk &&
         (alertClass == AlertClass.vitalsAlert || alertClass == AlertClass.emergency)) {
       base += 7.0;
     }

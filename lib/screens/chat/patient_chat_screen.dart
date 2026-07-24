@@ -153,6 +153,21 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
     final myUid = ref.read(_authUidProvider).valueOrNull ?? '';
     if (myUid.isEmpty) return;
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Durable local record of every email -> uid we've EVER resolved, checked
+      // before any network call. Without this, a guardian resolved while online
+      // gets demoted back to "pending" (a dead-end tile with no chat access)
+      // the instant a live re-resolution attempt fails while offline.
+      final resolvedCacheKey = 'resolved_guardian_uids_${myUid}_v1';
+      final resolvedCacheRaw = prefs.getString(resolvedCacheKey);
+      final resolvedCache = <String, String>{
+        if (resolvedCacheRaw != null)
+          ...Map<String, dynamic>.from(jsonDecode(resolvedCacheRaw) as Map)
+              .map((k, v) => MapEntry(k, v as String)),
+      };
+      var resolvedCacheDirty = false;
+
       // 0. RTDB resolved_guardians — fastest path, written when guardian logs in.
       //    This works even when Firestore WebSocket is unavailable.
       final rtdbResolved =
@@ -161,6 +176,11 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
       if (rtdbResolved.isNotEmpty) {
         final fromRtdb = rtdbResolved.entries.map((e) {
           final g = e.value;
+          final email = (g['email'] as String? ?? '').trim().toLowerCase();
+          if (email.isNotEmpty && resolvedCache[email] != e.key) {
+            resolvedCache[email] = e.key;
+            resolvedCacheDirty = true;
+          }
           return <String, dynamic>{
             'attendant_uid': e.key,
             'attendant_name': g['name'] as String? ?? 'Guardian',
@@ -172,7 +192,6 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
 
       // 1. Manual guardians from SharedPreferences (always available, no network).
       List<dynamic>? rawList;
-      final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString('manual_guardians_${myUid}_v1');
       if (cached != null) rawList = jsonDecode(cached) as List;
 
@@ -186,9 +205,15 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
           rawList = snap.data()?['manual_guardians'] as List?;
         } catch (_) {}
       }
-      if (rawList == null || rawList.isEmpty) return;
+      if (rawList == null || rawList.isEmpty) {
+        if (resolvedCacheDirty) {
+          await prefs.setString(resolvedCacheKey, jsonEncode(resolvedCache));
+        }
+        return;
+      }
 
-      // 2. Resolve UIDs via RTDB email_index (works without Firestore).
+      // 2. Resolve UIDs — prefer the durable local cache first, only hitting
+      //    the network for guardians that have never been resolved before.
       final resolved = <Map<String, dynamic>>[];
       final fsGuardians = <Map<String, dynamic>>[]; // for Firestore snapshot
 
@@ -199,13 +224,18 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
         final phone = (m['phone'] ?? '').toString();
         final id    = (m['id']    ?? '').toString();
 
-        String uid = '';
-        if (email.isNotEmpty) {
+        String uid = email.isNotEmpty ? (resolvedCache[email] ?? '') : '';
+
+        if (uid.isEmpty && email.isNotEmpty) {
           // Primary: Firestore query (works without RTDB WebSocket).
           uid = await _getGuardianUidByEmail(email) ?? '';
           // Fallback: RTDB email_index (works when RTDB is available).
           if (uid.isEmpty) {
             uid = await RealtimeDatabaseService.getUidByEmail(email) ?? '';
+          }
+          if (uid.isNotEmpty) {
+            resolvedCache[email] = uid;
+            resolvedCacheDirty = true;
           }
         }
 
@@ -234,6 +264,10 @@ class _PatientChatScreenState extends ConsumerState<PatientChatScreen> {
         fsGuardians.add(<String, dynamic>{
           'id': id, 'name': name, 'email': email, 'phone': phone, 'uid': uid,
         });
+      }
+
+      if (resolvedCacheDirty) {
+        await prefs.setString(resolvedCacheKey, jsonEncode(resolvedCache));
       }
 
       if (!mounted) return;

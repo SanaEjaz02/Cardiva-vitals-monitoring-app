@@ -2,11 +2,22 @@
 Cardiva ML Model → Dart Converter
 ==================================
 Converts vitals_model.pkl (GradientBoostingClassifier trained in fyp_dataset1.py)
-to a Dart function using m2cgen, then wraps it for ml_service.dart.
+to a Dart function, then wraps it for ml_service.dart.
+
+m2cgen does NOT support sklearn's GradientBoostingClassifier directly (only
+RandomForest/ExtraTrees/XGBoost/LightGBM). GBC's decision function is simply:
+
+    raw = init_bias + sum(learning_rate * tree_i(x) for each tree in the ensemble)
+    High Risk if raw < 0 else Low Risk   (since classes_ = ['High Risk', 'Low Risk']
+                                           and sklearn's decision_function is positive
+                                           for the second class alphabetically)
+
+So each individual tree (a plain DecisionTreeRegressor, which m2cgen DOES support)
+is exported separately, and the wrapper sums them with the learning rate + bias.
 
 Usage:
   1. Put vitals_model.pkl in this folder (downloaded from Colab)
-  2. pip install m2cgen scikit-learn numpy
+  2. pip install -r requirements.txt
   3. python convert_to_dart.py
   → Writes ../lib/engine/generated/emergency_model_generated.dart
 """
@@ -15,10 +26,12 @@ import pickle
 import os
 import sys
 
+import numpy as np
+
 try:
     import m2cgen as m2c
 except ImportError:
-    print("ERROR: m2cgen not installed. Run:  pip install m2cgen scikit-learn numpy")
+    print("ERROR: m2cgen not installed. Run:  pip install -r requirements.txt")
     sys.exit(1)
 
 PKL_PATH    = "vitals_model.pkl"
@@ -46,44 +59,50 @@ if not os.path.exists(PKL_PATH):
     sys.exit(1)
 
 model = pickle.load(open(PKL_PATH, "rb"))
+if isinstance(model, dict):
+    model = model.get("model", model)
+
 print(f"Model loaded. Type: {type(model).__name__}")
 print(f"Classes: {model.classes_}")
 print(f"n_estimators: {model.n_estimators}")
 
-# ── Convert via m2cgen ────────────────────────────────────────────────────────
-print("Converting to Dart with m2cgen...")
-dart_body = m2c.export_to_dart(model, function_name="_riskModelScore")
-
-# ── Figure out High Risk class index ─────────────────────────────────────────
 classes = list(model.classes_)
 print(f"class ordering: {classes}")
 
+if type(model).__name__ != "GradientBoostingClassifier" or len(classes) != 2:
+    print("ERROR: this script only handles a binary GradientBoostingClassifier.")
+    sys.exit(1)
+
 # sklearn sorts classes alphabetically: 'High Risk' < 'Low Risk'
-# so class 0 = 'High Risk', class 1 = 'Low Risk'
+# decision_function() > 0 → classes_[1] ('Low Risk'); < 0 → classes_[0] ('High Risk')
 high_risk_idx = classes.index("High Risk") if "High Risk" in classes else 0
 
-# m2cgen for binary GBC returns a List<double> [score_class0, score_class1]
-# or sometimes a single double (raw decision value, positive → class 1).
-# We handle both cases in the wrapper.
-if high_risk_idx == 0:
-    score_logic = (
-        "  // m2cgen output: List → compare scores; double → negative = class 0 (High Risk)\n"
-        "  final raw = _riskModelScore(input);\n"
-        "  if (raw is List) {\n"
-        "    final s = raw.cast<num>();\n"
-        "    return s[0] > s[1] ? 1.0 : 0.0;   // class 0 wins → High Risk\n"
-        "  }\n"
-        "  return (raw as double) < 0 ? 1.0 : 0.0;"
-    )
-else:
-    score_logic = (
-        "  final raw = _riskModelScore(input);\n"
-        "  if (raw is List) {\n"
-        "    final s = raw.cast<num>();\n"
-        "    return s[1] > s[0] ? 1.0 : 0.0;\n"
-        "  }\n"
-        "  return (raw as double) > 0 ? 1.0 : 0.0;"
-    )
+# ── Export every tree individually (m2cgen supports plain DecisionTreeRegressor) ──
+print(f"Converting {model.estimators_.shape[0]} trees to Dart with m2cgen...")
+tree_functions = []
+tree_bodies = []
+for i, tree in enumerate(model.estimators_[:, 0]):
+    fn_name = f"_riskTree{i}"
+    tree_bodies.append(m2c.export_to_dart(tree, function_name=fn_name))
+    tree_functions.append(fn_name)
+
+# ── Recover the constant init bias (DummyClassifier prior, same for every input) ──
+zero_row = np.zeros((1, len(FEATURES)))
+tree_sum_at_zero = sum(
+    model.learning_rate * t.predict(zero_row)[0] for t in model.estimators_[:, 0]
+)
+init_bias = float(model.decision_function(zero_row)[0] - tree_sum_at_zero)
+
+sum_expr = " +\n      ".join(f"{fn_name}(x)" for fn_name in tree_functions)
+score_logic = (
+    "  final x = input.map((e) => (e as num).toDouble()).toList();\n"
+    f"  final raw = {init_bias!r} + {model.learning_rate!r} * (\n"
+    f"      {sum_expr}\n"
+    f"  );\n"
+    + ("  return raw < 0 ? 1.0 : 0.0;   // raw < 0 -> class 0 (High Risk)"
+       if high_risk_idx == 0 else
+       "  return raw > 0 ? 1.0 : 0.0;   // raw > 0 -> class 1 (High Risk)")
+)
 
 # Print feature importances for info
 feat_imp = sorted(zip(FEATURES, model.feature_importances_), key=lambda x: -x[1])
@@ -93,9 +112,13 @@ imp_lines = "\n".join(f"//   {f:<25} {i:.4f}" for f, i in feat_imp)
 feature_doc = "\n".join(f"//   [{i}] {f}" for i, f in enumerate(FEATURES))
 
 header = f"""// AUTO-GENERATED by cardiva_ml_models/convert_to_dart.py — do not edit by hand.
-// Model   : GradientBoostingClassifier  (n_estimators={model.n_estimators})
+// Model   : GradientBoostingClassifier  (n_estimators={model.n_estimators}, learning_rate={model.learning_rate})
 // Classes : {classes}
 // Dataset : human_vital_signs_dataset_2024.csv (fyp_dataset1.py)
+//
+// m2cgen has no native GradientBoostingClassifier support, so each of the
+// {model.estimators_.shape[0]} trees is exported individually and summed here,
+// matching sklearn's own decision_function: init_bias + learning_rate * sum(trees).
 //
 // Feature order (index must match ml_service.dart):
 {feature_doc}
@@ -121,13 +144,13 @@ double emergencyModelScore(List<dynamic> input) {{
 
 """
 
-output = header + wrapper + dart_body
+output = header + wrapper + "\n".join(tree_bodies)
 
 os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PATH)), exist_ok=True)
 with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
     f.write(output)
 
-print(f"\n✅  Written to:  {os.path.abspath(OUTPUT_PATH)}")
+print(f"\nWritten to:  {os.path.abspath(OUTPUT_PATH)}")
 print(f"    Classes:     {classes}")
 print(f"\n    Top features by importance:")
 for feat, imp in feat_imp[:4]:

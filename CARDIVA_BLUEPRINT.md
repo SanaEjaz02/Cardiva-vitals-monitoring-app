@@ -34,7 +34,6 @@ During development: replaced by `MockDataService` generating realistic randomize
 
 ### Layer 3 — Cloud
 - Supabase (PostgreSQL + Auth + REST + Realtime)
-- Twilio SMS called from app for emergency alerts
 
 ---
 
