@@ -6,7 +6,6 @@ import '../models/health_event.dart';
 import '../models/vital_reading.dart';
 import '../services/ble_service.dart';
 import '../services/cloud_service.dart';
-import '../services/mock_data_service.dart';
 import 'user_provider.dart';
 
 // ── Service singletons ───────────────────────────────────────────────────────
@@ -25,24 +24,14 @@ final bleServiceProvider = Provider<BleService>((ref) {
 // true when BLE device is attached and notifications are active
 final bleConnectedProvider = StateProvider<bool>((ref) => false);
 
-// Mock service — runs automatically when BLE is not connected
-final mockDataServiceProvider = Provider<MockDataService>((ref) {
-  final svc = MockDataService();
-  ref.onDispose(svc.dispose);
-  return svc;
-});
-
-// ── Live vital stream — BLE when connected, mock data otherwise ───────────────
+// ── Live vital stream — only emits once a real band is connected ─────────────
 final latestReadingProvider = StreamProvider<VitalReading>((ref) {
   final bleConnected = ref.watch(bleConnectedProvider);
-  final mock = ref.watch(mockDataServiceProvider);
   if (bleConnected) {
-    mock.stop(); // stop mock timer so it doesn't run in background
     return ref.watch(bleServiceProvider).readingStream;
   }
-  // No band connected — simulate with mock data so the rest of the app works.
-  mock.start();
-  return mock.stream;
+  // No band connected — stay idle (AsyncLoading) until one is.
+  return const Stream<VitalReading>.empty();
 });
 
 // ── Derived health event ─────────────────────────────────────────────────────

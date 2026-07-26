@@ -22,6 +22,20 @@ class BleService {
   int _reconnectAttempts = 0;
   static const _maxReconnectAttempts = 5;
 
+  // Median-of-5 filter on raw heart rate: the MAX30100's beat-detection
+  // hasn't locked onto a stable signal for the first second or two after
+  // finger contact, producing spurious spikes. A median rejects a single
+  // bad sample without lagging behind genuine sustained changes.
+  final List<double> _hrWindow = [];
+  static const _hrWindowSize = 5;
+
+  double _smoothedHr(double raw) {
+    _hrWindow.add(raw);
+    if (_hrWindow.length > _hrWindowSize) _hrWindow.removeAt(0);
+    final sorted = [..._hrWindow]..sort();
+    return sorted[sorted.length ~/ 2];
+  }
+
   /// Fired whenever the internal connection state changes.
   /// Wire this up in vital_provider.dart to keep bleConnectedProvider in sync.
   Function(bool)? onConnectionChanged;
@@ -208,7 +222,7 @@ class BleService {
         return null;
       }
 
-      final hr   = double.tryParse(fields[0]) ?? 0.0;
+      final hr   = _smoothedHr(double.tryParse(fields[0]) ?? 0.0);
       final spo2 = double.tryParse(fields[1]) ?? 0.0;
       final hrv  = double.tryParse(fields[2]) ?? 0.0;
       final rr   = double.tryParse(fields[3]) ?? 0.0;

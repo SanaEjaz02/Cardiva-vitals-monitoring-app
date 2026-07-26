@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/vital_reading.dart';
 import 'vital_provider.dart';
 
-/// Accumulates VitalReading objects in memory as they arrive from MockDataService.
+/// Accumulates VitalReading objects in memory as they arrive from the BLE band.
 /// Keeps the most recent 120 readings (≈ 4 minutes of data at 2-second intervals).
 class ReadingHistoryNotifier extends StateNotifier<List<VitalReading>> {
   ReadingHistoryNotifier(Ref ref) : super([]) {

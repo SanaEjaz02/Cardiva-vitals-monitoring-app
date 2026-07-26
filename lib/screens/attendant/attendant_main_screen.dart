@@ -4,17 +4,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/user_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/realtime_database_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import 'attendant_dashboard_tab.dart';
 import 'attendant_chat_list_tab.dart';
 import 'attendant_alert_history_tab.dart';
 import 'attendant_profile_tab.dart';
+import 'guardian_sos_screen.dart';
 
 final _guardianChatUnreadProvider = StreamProvider.autoDispose<int>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(0);
   return ChatService.totalUnreadStream(uid);
+});
+
+// Raw per-user notifications (fall/vitals/manual-SOS alerts pushed by
+// EmergencyTrigger). Diffed below to fire the full-screen SOS alarm only for
+// alerts that just arrived, not the whole history on every login.
+final _guardianSosProvider =
+    StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  return RealtimeDatabaseService.watchNotifications();
 });
 
 class AttendantMainScreen extends ConsumerStatefulWidget {
@@ -84,6 +94,36 @@ class _AttendantMainScreenState extends ConsumerState<AttendantMainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Fire the full-screen SOS alarm the moment a new emergency alert lands.
+    // Skip the initial emission (previous == null) so re-login doesn't replay
+    // old, already-seen alerts as a fresh alarm.
+    ref.listen<AsyncValue<List<Map<String, dynamic>>>>(_guardianSosProvider,
+        (previous, next) {
+      if (previous == null || !mounted) return;
+      final prevIds = {
+        for (final n in previous.valueOrNull ?? <Map<String, dynamic>>[])
+          n['id'] as String? ?? '',
+      };
+      final fresh = (next.valueOrNull ?? <Map<String, dynamic>>[])
+          .where((n) =>
+              !prevIds.contains(n['id']) &&
+              n['type'] == 'emergency' &&
+              n['is_read'] != true)
+          .toList();
+      if (fresh.isEmpty) return;
+      final latest = fresh.first; // stream is sorted newest-first
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => GuardianSosScreen(
+            notificationId: latest['id'] as String? ?? '',
+            title: latest['title'] as String? ?? 'SOS ALERT',
+            body: latest['body'] as String? ?? '',
+          ),
+        ),
+      );
+    });
+
     // Show in-app banner when a new message arrives and guardian is not on the Messages tab.
     // Skip the initial emission to avoid spurious alerts on login.
     ref.listen<AsyncValue<int>>(_guardianChatUnreadProvider, (previous, next) {
