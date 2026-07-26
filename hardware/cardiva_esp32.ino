@@ -1,506 +1,374 @@
+/*  CARDIVA wearable firmware — Arduino IDE sketch
+ *
+ *  Hardware on this board (auto-detected via I2C):
+ *    - MAX30100 pulse oximeter  @ 0x57   (HR / SpO2)   -> MAX30100lib
+ *    - MPU6050-class accel/gyro @ 0x69   (AD0 high, motion/fall) -> direct register access
+ *    - SH1106 OLED 128x64       @ 0x3C   (display)     -> Adafruit_SH110X
+ *    - BLE (Cardiva)                     (phone app)
+ *
+ *  ── Arduino IDE setup (one-time) ──────────────────────────────────────────
+ *  1. File > Preferences > "Additional boards manager URLs":
+ *       https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+ *  2. Tools > Board > Boards Manager: install "esp32 by Espressif Systems"
+ *  3. Tools > Board: select "ESP32 Dev Module"
+ *  4. Sketch > Include Library > Manage Libraries: install
+ *       - "Adafruit GFX Library"       (adafruit)
+ *       - "Adafruit SH110X"            (adafruit)
+ *       - "MAX30100lib"                (oxullo)
+ *  5. This file must live in a folder with the SAME name as the file, e.g.
+ *       hardware/cardiva_esp32/cardiva_esp32.ino
+ *     (Arduino IDE will offer to do this for you automatically on first open.)
+ *  6. Tools > Port: select the CH340 USB-serial port the board enumerates as.
+ *  7. Tools > Upload Speed: 921600 (or 115200 if uploads fail/timeout).
+ *  8. Click Upload. Tools > Serial Monitor at 115200 baud to see live output.
+ *
+ *  No platformio.ini / PlatformIO install needed for this workflow — this is
+ *  the exact same firmware, just built with Arduino IDE's own toolchain.
+ */
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_SH110X.h>          // this board's OLED is an SH1106, NOT SSD1306
 #include "MAX30100_PulseOximeter.h"
-#include <MPU9250_asukiaaa.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// PINS & DISPLAY
-#define SDA_PIN       21
-#define SCL_PIN       22
-#define OLED_RESET    -1
-#define SCREEN_WIDTH  128
-#define SCREEN_HEIGHT 64
+#define ENABLE_BLE  1           // BLE for phone app
+#define ENABLE_MPU  1           // motion / fall
+#define ENABLE_OLED 1           // OLED display
 
-// BLE UUIDs
-#define SERVICE_UUID      "12345678-1234-5678-1234-56789abcdef0"
-#define VITALS_CHAR_UUID  "12345678-1234-5678-1234-56789abcdef1"
-#define DEVICE_NAME       "Cardiva-ESP32"
+// ---- Pins / I2C addresses ----
+#define SDA_PIN   21
+#define SCL_PIN   22
+#define OLED_ADDR 0x3C
+#define MPU_ADDR  0x69          // NOTE: this board's motion sensor is at 0x69 (AD0 high)
+#define MPU_PWR_MGMT_1   0x6B
+#define MPU_ACCEL_CONFIG 0x1C
+#define MPU_ACCEL_XOUT_H 0x3B
+#define SCREEN_W  128
+#define SCREEN_H  64
 
-// TIMING
-#define REPORT_INTERVAL_MS    1000
-#define IBI_BUF_SIZE          20
-#define ACCEL_BUF_SIZE        50
-#define NO_FINGER_TIMEOUT_MS  8000
+// ---- BLE UUIDs (these are what the Cardiva phone app scans for — verified from the APK) ----
+#define SERVICE_UUID  "12345678-1234-5678-1234-56789abcdef0"
+#define VITALS_UUID   "12345678-1234-5678-1234-56789abcdef1"   // single vitals characteristic
+#define DEVICE_NAME   "Cardiva"
 
-// OBJECTS
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_W, SCREEN_H, &Wire, -1);
 PulseOximeter    pox;
-MPU9250_asukiaaa mpu;
 
-BLEServer*         pServer     = nullptr;
-BLECharacteristic* pVitalsChar = nullptr;
-bool deviceConnected    = false;
-bool oldDeviceConnected = false;
+BLEServer*         pServer  = nullptr;
+BLECharacteristic* chVitals = nullptr;
+bool bleConnected = false;
+bool oledOK = false, poxOK = false, mpuOK = false;
 
-// VITALS
-float   heartRate       = 0;
-float   spo2            = 0;
-float   hrvSDNN         = 0;
-float   respirationRate = 0;
-String  activityState   = "Resting";
-bool    fallDetected    = false;
-bool    fingerPresent   = false;
+// ---- Vitals ----
+float heartRate = 0, spo2 = 0, hrvRMSSD = 0, respRate = 14.0;
+float ax = 0, ay = 0, az = 0;
+String activity = "STILL";
+bool  fallDetected = false;
 
-uint32_t tsLastReport  = 0;
-uint32_t tsLastBeat    = 0;
-uint32_t tsLastBeatAbs = 0;
-uint8_t  animFrame     = 0;
+// ---- Heartbeat / HRV ----
+uint32_t lastBeat = 0;
+#define IBI_N 20
+float ibis[IBI_N];
+int   ibiIdx = 0, ibiCount = 0;
+#define STALE_BEAT_MS 3000     // no beat this long = finger off -> reset HRV/resp instead of freezing
 
-// IBI buffer
-uint32_t ibiBuffer[IBI_BUF_SIZE];
-int      ibiIndex = 0;
-int      ibiCount = 0;
+// ---- Respiration (estimated from RSA: breathing rhythmically speeds/slows
+// the heartbeat, so counting that rhythm in the beat-to-beat intervals gives
+// a real breaths/min estimate -- there's no dedicated respiration sensor) ----
+float    rrPrevIbi     = -1;
+int      rrDir         = 0;      // 1 = IBI rising, -1 = falling
+int      rrPeaks       = 0;      // one peak (rising->falling) = one breath cycle
+uint32_t rrWindowStart = 0;
+#define  RR_WINDOW_MS  20000     // recompute breaths/min over a 20s sliding window
+#define  RR_NOISE_MS   8         // ignore sub-8ms IBI wiggle as sensor noise, not breathing
 
-// RSA respiration
-#define RSA_SMOOTH_ALPHA  0.25f
-#define RSA_TREND_ALPHA   0.08f
-#define RSA_MIN_BREATH_MS 1500
-float    rsaSmoothed  = 0;
-float    rsaTrend     = 0;
-bool     rsaInited    = false;
-bool     rsaRising    = false;
-uint32_t rsaLastBreath = 0;
-uint32_t rsaIntervals[6];
-int      rsaBufIdx   = 0;
-int      rsaBufCount = 0;
+// ---- Fall detection ----
+int      ffCount    = 0;        // consecutive weightless samples
+uint32_t fallTime   = 0;        // when the current fall was flagged
+#define  FALL_HOLD_MS 5000      // keep the FALL alert on screen this long
 
-// Accel buffer
-float    accelBuf[ACCEL_BUF_SIZE];
-int      accelIdx     = 0;
-bool     accelBufFull = false;
+uint32_t tsReport = 0, tsScreen = 0, tsMPU = 0;
+bool showHealth = true;
 
-// Fall detection
-bool     inFreeFall    = false;
-uint32_t freeFallStart = 0;
-
-// sends 9 SCL pulses to unstick any slave holding SDA low
-void i2cBusRecover() {
-  pinMode(SDA_PIN, OUTPUT);
-  pinMode(SCL_PIN, OUTPUT);
-  digitalWrite(SDA_PIN, HIGH);
-  for (int i = 0; i < 9; i++) {
-    digitalWrite(SCL_PIN, LOW);  delayMicroseconds(5);
-    digitalWrite(SCL_PIN, HIGH); delayMicroseconds(5);
-  }
-  // STOP condition
-  digitalWrite(SDA_PIN, LOW);  delayMicroseconds(5);
-  digitalWrite(SCL_PIN, HIGH); delayMicroseconds(5);
-  digitalWrite(SDA_PIN, HIGH); delayMicroseconds(5);
-  pinMode(SDA_PIN, INPUT);
-  pinMode(SCL_PIN, INPUT);
-  delay(50);
-}
-
-// ─── BLE CALLBACKS ───────────────────────────────────────────────────────────
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* s) override    { deviceConnected = true;  }
-  void onDisconnect(BLEServer* s) override { deviceConnected = false; }
+class SrvCB : public BLEServerCallbacks {
+  void onConnect(BLEServer* s) override    { bleConnected = true;  Serial.println(">>> BLE: phone CONNECTED"); }
+  void onDisconnect(BLEServer* s) override { bleConnected = false; Serial.println(">>> BLE: phone DISCONNECTED"); BLEDevice::startAdvertising(); }
 };
 
-// ─── RSA RESPIRATION ─────────────────────────────────────────────────────────
-void feedRSA(uint32_t ibiMs) {
-  float ibi = (float)ibiMs;
-  if (!rsaInited) {
-    rsaSmoothed = ibi;
-    rsaTrend    = ibi;
-    rsaInited   = true;
+void updateRespiration(float ibi) {
+  if (rrWindowStart == 0) rrWindowStart = millis();
+  if (rrPrevIbi >= 0) {
+    int newDir;
+    if      (ibi > rrPrevIbi + RR_NOISE_MS) newDir = 1;
+    else if (ibi < rrPrevIbi - RR_NOISE_MS) newDir = -1;
+    else                                    newDir = rrDir;   // tiny wiggle: keep direction
+    if (rrDir == 1 && newDir == -1) rrPeaks++;                // local max = one breath
+    rrDir = newDir;
+  }
+  rrPrevIbi = ibi;
+}
+
+void onBeat() {
+  uint32_t now = millis();
+  if (lastBeat) {
+    float ibi = now - lastBeat;
+    if (ibi > 300 && ibi < 2000) {          // plausible 30-200 bpm
+      ibis[ibiIdx] = ibi;
+      ibiIdx = (ibiIdx + 1) % IBI_N;
+      if (ibiCount < IBI_N) ibiCount++;
+      updateRespiration(ibi);
+    }
+  }
+  lastBeat = now;
+}
+
+// Chronological read of the circular IBI buffer: k=0 is the oldest sample,
+// k=ibiCount-1 is the newest. (ibis[] wraps once full, so raw indices alone
+// are NOT in time order -- reading them directly silently corrupts RMSSD.)
+float ibiAt(int k) {
+  int start = (ibiCount < IBI_N) ? 0 : ibiIdx;
+  return ibis[(start + k) % IBI_N];
+}
+
+void computeHRV() {                          // RMSSD of successive IBIs
+  if (ibiCount < 3) { hrvRMSSD = 0; return; }
+  float sum = 0; int n = 0;
+  for (int i = 1; i < ibiCount; i++) { float d = ibiAt(i) - ibiAt(i - 1); sum += d * d; n++; }
+  hrvRMSSD = (n > 0) ? sqrt(sum / n) : 0;
+}
+
+// Finalizes the respiration estimate once the sliding window elapses, and
+// clears HRV/respiration state once beats stop arriving (finger off) so
+// these values reset instead of staying frozen at their last reading.
+void updateVitalsWindow() {
+  if (lastBeat != 0 && millis() - lastBeat > STALE_BEAT_MS) {
+    ibiCount = 0; ibiIdx = 0; hrvRMSSD = 0;
+    rrPrevIbi = -1; rrDir = 0; rrPeaks = 0; rrWindowStart = 0; respRate = 0;
+    lastBeat = 0;
     return;
   }
-  rsaSmoothed = RSA_SMOOTH_ALPHA * ibi + (1.0f - RSA_SMOOTH_ALPHA) * rsaSmoothed;
-  rsaTrend    = RSA_TREND_ALPHA  * ibi + (1.0f - RSA_TREND_ALPHA)  * rsaTrend;
-  bool above  = rsaSmoothed > rsaTrend;
-
-  if (rsaRising && !above) {
-    uint32_t now = millis();
-    if (rsaLastBreath != 0) {
-      uint32_t gap = now - rsaLastBreath;
-      if (gap > RSA_MIN_BREATH_MS && gap < 15000) {
-        rsaIntervals[rsaBufIdx] = gap;
-        rsaBufIdx = (rsaBufIdx + 1) % 6;
-        if (rsaBufCount < 6) rsaBufCount++;
-      }
-    }
-    rsaLastBreath = now;
+  if (rrWindowStart != 0 && millis() - rrWindowStart > RR_WINDOW_MS) {
+    float elapsedSec = (millis() - rrWindowStart) / 1000.0f;
+    float estimate = (rrPeaks / elapsedSec) * 60.0f;
+    if (estimate >= 6 && estimate <= 35) respRate = estimate;  // physiological sanity clamp
+    rrPeaks = 0;
+    rrWindowStart = millis();
   }
-  rsaRising = above;
 }
 
-// ─── BEAT CALLBACK ───────────────────────────────────────────────────────────
-void onBeatDetected() {
-  uint32_t now = millis();
-  tsLastBeatAbs = now;
-  fingerPresent = true;
-
-  if (tsLastBeat != 0) {
-    uint32_t ibi = now - tsLastBeat;
-    if (ibi > 300 && ibi < 2000) {
-      // FIX 4: print ibi before updating tsLastBeat
-      Serial.print("Beat! IBI=");
-      Serial.print(ibi);
-      Serial.println("ms");
-
-      ibiBuffer[ibiIndex] = ibi;
-      ibiIndex = (ibiIndex + 1) % IBI_BUF_SIZE;
-      if (ibiCount < IBI_BUF_SIZE) ibiCount++;
-      feedRSA(ibi);
-    }
-  }
-  tsLastBeat = now;
-}
-
-// ─── SETUP ───────────────────────────────────────────────────────────────────
-void setup() {
-  Serial.begin(115200);
-  delay(400);
-  Serial.println("\n====== Cardiva Booting ======");
-
-  i2cBusRecover();
-  Wire.begin(SDA_PIN, SCL_PIN);
-  // enable internal pull-ups — multiple I2C devices cause high bus capacitance
-  pinMode(SDA_PIN, INPUT_PULLUP);
-  pinMode(SCL_PIN, INPUT_PULLUP);
-  Wire.setClock(10000);
-
-  // OLED — try 0x3C first, fallback to 0x3D
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("[OLED] 0x3C failed, trying 0x3D...");
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-      Serial.println("[ERR] OLED init failed on both addresses!");
-    } else {
-      Serial.println("[OLED] OK on 0x3D");
-      showBootScreen();
-    }
-  } else {
-    Serial.println("[OLED] OK on 0x3C");
-    display.invertDisplay(false);
-    showBootScreen();
-  }
-
-  // MAX30100
-  Serial.print("[MAX30100] Initializing... ");
-  if (!pox.begin()) {
-    Serial.println("FAILED - check wiring!");
-  } else {
-    Serial.println("OK");
-    pox.setIRLedCurrent(MAX30100_LED_CURR_50MA);
-    pox.setOnBeatDetectedCallback(onBeatDetected);
-  }
-
-  // MPU9250
-  mpu.setWire(&Wire);
-  mpu.beginAccel();
-  mpu.beginGyro();
-  Serial.println("[MPU9250] OK");
-
-  Wire.setClock(400000);  // sensors work fine at 400kHz
-
-  // BLE
-  setupBLE();
-
-  Serial.println("====== Cardiva Ready ======");
-  Serial.println("Place fingertip FLAT on sensor, hold still 15-20 sec...\n");
-}
-
-// ─── BLE SETUP ───────────────────────────────────────────────────────────────
 void setupBLE() {
   BLEDevice::init(DEVICE_NAME);
+  BLEDevice::setMTU(247);                     // allow the full vitals JSON (avoid truncation)
   pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
-
+  pServer->setCallbacks(new SrvCB());
   BLEService* svc = pServer->createService(SERVICE_UUID);
-  pVitalsChar = svc->createCharacteristic(
-    VITALS_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pVitalsChar->addDescriptor(new BLE2902());
-  svc->start();
 
+  chVitals = svc->createCharacteristic(VITALS_UUID,
+             BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  chVitals->addDescriptor(new BLE2902());
+
+  svc->start();
   BLEAdvertising* adv = BLEDevice::getAdvertising();
   adv->addServiceUUID(SERVICE_UUID);
   adv->setScanResponse(true);
-  adv->setMinPreferred(0x06);
   BLEDevice::startAdvertising();
-
-  Serial.println("[BLE] Advertising as: " + String(DEVICE_NAME));
 }
 
-// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
-void loop() {
-  pox.update();
-  updateMPU();
-  handleBLEReconnect();
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("\n\n===== CARDIVA FIRMWARE (fixed HR) =====");
 
-  // finger timeout
-  if (tsLastBeatAbs != 0 && millis() - tsLastBeatAbs > NO_FINGER_TIMEOUT_MS) {
-    fingerPresent = false;
-    heartRate     = 0;
-    spo2          = 0;
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+  // OLED
+#if ENABLE_OLED
+  oledOK = display.begin(OLED_ADDR, true);
+  Serial.println(oledOK ? "OLED  : OK" : "OLED  : FAIL");
+  if (oledOK) {
+    display.clearDisplay();
+    display.setTextColor(SH110X_WHITE);
+    display.setTextSize(2); display.setCursor(18, 18); display.print("CARDIVA");
+    display.setTextSize(1); display.setCursor(28, 46); display.print("starting...");
+    display.display();
+    Wire.setClock(100000);   // keep the OLED at 100 kHz to avoid display glitching
   }
+#else
+  Serial.println("OLED  : DISABLED (HR isolation test)");
+#endif
 
-  if (millis() - tsLastReport > REPORT_INTERVAL_MS) {
-    tsLastReport = millis();
-
-    heartRate = pox.getHeartRate();
-    spo2      = pox.getSpO2();
-
-    if (heartRate > 20 && spo2 > 50) {
-      fingerPresent = true;
-      tsLastBeatAbs = millis();
-    }
-
-    computeHRV();
-    computeRespiration();
-    classifyActivity();
-
-    // FIX 2: OLED first, then BLE — so fallDetected is still true when OLED checks it
-    updateOLED();
-    sendBLE();
-
-    animFrame = (animFrame + 1) % 4;
-
-    Serial.printf("[VITALS] HR=%.0f  SpO2=%.0f  HRV=%.0f  RR=%.0f  Act=%s  Finger=%s  BLE=%s\n",
-      heartRate, spo2, hrvSDNN, respirationRate,
-      activityState.c_str(),
-      fingerPresent ? "YES" : "NO",
-      deviceConnected ? "CONN" : "ADV");
+  // MPU6050/6500/9250 — talk to it directly (works for any variant at 0x69)
+#if ENABLE_MPU
+  Wire.beginTransmission(MPU_ADDR);
+  mpuOK = (Wire.endTransmission() == 0);
+  if (mpuOK) {
+    Wire.beginTransmission(MPU_ADDR);           // wake from sleep
+    Wire.write(MPU_PWR_MGMT_1); Wire.write(0x00);
+    Wire.endTransmission(true);
+    Wire.beginTransmission(MPU_ADDR);           // accel range = +/-8g (0x10)
+    Wire.write(MPU_ACCEL_CONFIG); Wire.write(0x10);   // wide range so impacts register
+    Wire.endTransmission(true);
   }
+  Serial.println(mpuOK ? "MPU6050 : OK" : "MPU6050 : FAIL");
+#else
+  Serial.println("MPU6050 : DISABLED (HR isolation test)");
+#endif
+
+#if ENABLE_BLE
+  setupBLE();
+  Serial.println("BLE   : advertising as 'Cardiva'");
+#else
+  Serial.println("BLE   : DISABLED (HR isolation test)");
+#endif
+
+  // MAX30100 pulse oximeter — initialise LAST, right before loop(), so the
+  // ~1-2 s BLE setup can't stall the sensor FIFO and break beat detection.
+  // Retry begin() a few times since the sensor can be slow to answer.
+  delay(200);
+  for (int i = 0; i < 8 && !poxOK; i++) {
+    poxOK = pox.begin();
+    if (!poxOK) { Serial.print("  MAX30100 retry "); Serial.println(i + 1); delay(200); }
+  }
+  Serial.println(poxOK ? "MAX30100: OK" : "MAX30100: FAIL");
+  if (poxOK) {
+    pox.setIRLedCurrent(MAX30100_LED_CURR_50MA);
+    pox.setOnBeatDetectedCallback(onBeat);
+  }
+  // loop() begins immediately now, so pox.update() runs without delay.
 }
 
-// ─── MPU9250 ─────────────────────────────────────────────────────────────────
-void updateMPU() {
-  if (mpu.accelUpdate() != 0) return;
+void readMPU() {
+  if (!mpuOK) return;
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(MPU_ACCEL_XOUT_H);
+  if (Wire.endTransmission(false) != 0) return;
+  if (Wire.requestFrom(MPU_ADDR, 6, (int)true) < 6) return;
+  int16_t rx = (Wire.read() << 8) | Wire.read();
+  int16_t ry = (Wire.read() << 8) | Wire.read();
+  int16_t rz = (Wire.read() << 8) | Wire.read();
+  ax = rx / 4096.0f;                         // +/-8g -> 4096 LSB/g
+  ay = ry / 4096.0f;
+  az = rz / 4096.0f;
+  float mag = sqrt(ax * ax + ay * ay + az * az);
 
-  float ax  = mpu.accelX();
-  float ay  = mpu.accelY();
-  float az  = mpu.accelZ();
-  float mag = sqrt(ax*ax + ay*ay + az*az);
+  // ---- FALL DETECTION ----
+  // Trigger on EITHER: sustained free-fall (the device is dropping -> mag ~0),
+  // OR a hard impact spike (a heavy knock/landing -> mag high, now readable at +/-8g).
+  if (mag < 0.45f) ffCount++;                 // counting weightless samples
+  else             ffCount = 0;
 
-  accelBuf[accelIdx] = mag;
-  accelIdx = (accelIdx + 1) % ACCEL_BUF_SIZE;
-  if (accelIdx == 0) accelBufFull = true;
+  bool freeFalling = (ffCount >= 3);          // ~60 ms of weightlessness = a real drop
+  bool impact      = (mag > 2.5f);            // a strong jolt
 
-  if (!inFreeFall) {
-    if (mag < 0.3f) { inFreeFall = true; freeFallStart = millis(); }
-  } else {
-    uint32_t elapsed = millis() - freeFallStart;
-    if (elapsed < 1500) {
-      // require free fall to last at least 80ms before impact counts
-      if (elapsed > 80 && mag > 3.5f) { fallDetected = true; inFreeFall = false; }
-    } else {
-      inFreeFall = false;
-    }
+  if ((freeFalling || impact) && !fallDetected) {
+    fallDetected = true;
+    fallTime = millis();
+    Serial.println(">>> FALL DETECTED!");
   }
+
+  float dev = fabs(mag - 1.0f);
+  if      (dev < 0.06f) activity = "STILL";
+  else if (dev < 0.25f) activity = "MOVING";
+  else                  activity = "ACTIVE";
 }
 
-// ─── HRV (SDNN) ──────────────────────────────────────────────────────────────
-void computeHRV() {
-  if (ibiCount < 5) { hrvSDNN = 0; return; }
-
-  float mean = 0;
-  for (int i = 0; i < ibiCount; i++) mean += ibiBuffer[i];
-  mean /= ibiCount;
-
-  float var = 0;
-  for (int i = 0; i < ibiCount; i++) {
-    float d = ibiBuffer[i] - mean;
-    var += d * d;
-  }
-  hrvSDNN = sqrt(var / ibiCount);
-}
-
-// ─── RESPIRATION (RSA) ────────────────────────────────────────────────────────
-void computeRespiration() {
-  if (rsaLastBreath == 0 || millis() - rsaLastBreath > 12000) {
-    respirationRate = 0;
-    return;
-  }
-  if (rsaBufCount < 2) return;
-
-  float mean = 0;
-  for (int i = 0; i < rsaBufCount; i++) mean += rsaIntervals[i];
-  mean /= rsaBufCount;
-
-  float bpm = 60000.0f / mean;
-  if (bpm < 6)  bpm = 6;
-  if (bpm > 40) bpm = 40;
-  respirationRate = bpm;
-}
-
-// ─── ACTIVITY CLASSIFICATION ─────────────────────────────────────────────────
-void classifyActivity() {
-  int n = accelBufFull ? ACCEL_BUF_SIZE : accelIdx;
-  if (n < 5) { activityState = "Resting"; return; }
-
-  float mean = 0;
-  for (int i = 0; i < n; i++) mean += accelBuf[i];
-  mean /= n;
-
-  float var = 0;
-  for (int i = 0; i < n; i++) {
-    float d = accelBuf[i] - mean;
-    var += d * d;
-  }
-  float sd = sqrt(var / n);
-
-  if      (sd < 0.02f) activityState = "Resting";
-  else if (sd < 0.15f) activityState = "Sedentary";
-  else if (sd < 0.50f) activityState = "Walking";
-  else                 activityState = "Active";
-}
-
-// ─── BLE RECONNECT ───────────────────────────────────────────────────────────
-void handleBLEReconnect() {
-  if (!deviceConnected && oldDeviceConnected) {
-    delay(300);
-    pServer->startAdvertising();
-    oldDeviceConnected = false;
-    Serial.println("[BLE] Restarting advertising...");
-  }
-  if (deviceConnected && !oldDeviceConnected) {
-    oldDeviceConnected = true;
-    Serial.println("[BLE] Phone connected!");
-  }
-}
-
-// ─── SEND BLE JSON ───────────────────────────────────────────────────────────
-void sendBLE() {
-  String json = "{";
-  json += "\"hr\":"    + String(heartRate, 1)      + ",";
-  json += "\"spo2\":"  + String(spo2, 1)            + ",";
-  json += "\"hrv\":"   + String(hrvSDNN, 1)         + ",";
-  json += "\"rr\":"    + String(respirationRate, 1) + ",";
-  json += "\"act\":\"" + activityState              + "\",";
-  json += "\"fall\":"  + String(fallDetected ? "true" : "false");
-  json += "}";
-
-  if (deviceConnected) {
-    pVitalsChar->setValue(json.c_str());
-    pVitalsChar->notify();
-  }
-
-  if (fallDetected) fallDetected = false;
-}
-
-// ─── OLED BOOT SCREEN ────────────────────────────────────────────────────────
-void showBootScreen() {
+void drawHealth() {
   display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(2);
-  display.setCursor(16, 14);
-  display.println("CARDIVA");
-  display.drawFastHLine(10, 36, 108, SSD1306_WHITE);
+  display.setTextColor(SH110X_WHITE);
   display.setTextSize(1);
-  display.setCursor(10, 44);
-  display.println("Initializing...");
-  oledShow();
-  delay(1200);
-}
-
-// ─── OLED HEART ICON ─────────────────────────────────────────────────────────
-void drawHeart(int x, int y, bool big) {
-  int s = big ? 1 : 0;
-  display.fillCircle(x+3, y+3, 3+s, SSD1306_WHITE);
-  display.fillCircle(x+9, y+3, 3+s, SSD1306_WHITE);
-  display.fillTriangle(x-1, y+4, x+13, y+4, x+6, y+13+s, SSD1306_WHITE);
-}
-
-// reset I2C speed before every OLED write — MPU9250 library changes it at runtime
-void oledShow() {
-  Wire.setClock(10000);   // ultra slow for OLED — fix I2C data corruption
+  display.setCursor(0, 0);
+  display.print(bleConnected ? "HEALTH (BLE ON)" : "HEALTH (BLE --)");
+  display.drawLine(0, 10, 127, 10, SH110X_WHITE);
+  display.setCursor(0, 16); display.print("HR:   "); display.print(heartRate, 1);
+  display.setCursor(0, 28); display.print("SpO2: "); display.print(spo2, 0); display.print(" %");
+  display.setCursor(0, 40); display.print("HRV:  "); display.print(hrvRMSSD, 1);
+  display.setCursor(0, 52); display.print("RESP: "); display.print(respRate, 1);
   display.display();
-  Wire.setClock(400000);  // restore fast speed for sensors
 }
 
-// ─── OLED MAIN SCREEN ────────────────────────────────────────────────────────
-void updateOLED() {
-  display.invertDisplay(false);
+void drawMotion() {
   display.clearDisplay();
-
-  // Status bar
-  display.fillCircle(4, 4, 3, deviceConnected ? SSD1306_WHITE : SSD1306_BLACK);
-  display.drawCircle(4, 4, 3, SSD1306_WHITE);
+  display.setTextColor(SH110X_WHITE);
   display.setTextSize(1);
-  display.setCursor(10, 0);
-  display.print(deviceConnected ? "Connected" : "No BLE");
+  display.setCursor(0, 0);
+  display.print("MOTION (g) -> BLE");
+  display.drawLine(0, 10, 127, 10, SH110X_WHITE);
+  display.setCursor(0, 16); display.print("X: "); display.print(ax, 2);
+  display.setCursor(0, 28); display.print("Y: "); display.print(ay, 2);
+  display.setCursor(0, 40); display.print("Z: "); display.print(az, 2);
+  display.setCursor(0, 52); display.print(activity);
+  display.display();
+}
 
-  uint32_t s = millis() / 1000;
-  display.setCursor(93, 0);
-  display.printf("%02lu:%02lu", (s / 60) % 60, s % 60);
+// Full-screen fall alert that takes over both pages, blinking for visibility.
+void drawFallAlert() {
+  static bool inv = false;
+  inv = !inv;
+  display.clearDisplay();
+  if (inv) display.fillRect(0, 0, 128, 64, SH110X_WHITE);
+  uint16_t fg = inv ? SH110X_BLACK : SH110X_WHITE;
+  display.setTextColor(fg);
+  display.setTextSize(3);
+  display.setCursor(14, 8);  display.print("FALL!");
+  display.setTextSize(1);
+  display.setCursor(8, 44);  display.print("Check on wearer");
+  display.display();
+}
 
-  display.drawFastHLine(0, 10, 128, SSD1306_WHITE);
+void loop() {
+  if (poxOK) pox.update();                   // must run as often as possible
 
-  // No finger message
-  if (!fingerPresent) {
-    display.setTextSize(1);
-    display.setCursor(10, 20);
-    display.println("Place finger on");
-    display.setCursor(10, 32);
-    display.println("MAX30100 sensor");
-    display.setCursor(10, 46);
-    display.println("Hold still 15-20s");
-    oledShow();
-    return;
+#if ENABLE_MPU
+  if (millis() - tsMPU > 20) { tsMPU = millis(); readMPU(); }  // 50 Hz to catch fast drops
+#endif
+
+  if (millis() - tsReport > 1000) {
+    tsReport = millis();
+    if (poxOK) { heartRate = pox.getHeartRate(); spo2 = pox.getSpO2(); }
+    updateVitalsWindow();
+    computeHRV();
+
+    if (ENABLE_BLE && bleConnected) {
+      // The app parses a CSV string (NOT JSON):
+      //   "HR,SpO2,HRV,Resp,AcX,AcY,AcZ,Activity"
+      // AcX/Y/Z are in g-units (the app multiplies them by 9.81).
+      // Activity is STILL | MOVING | FALL  (FALL is how a fall is signalled).
+      const char* actField = fallDetected ? "FALL"
+                           : (activity == "MOVING" || activity == "ACTIVE") ? "MOVING"
+                           : "STILL";
+      char v[80];
+      snprintf(v, sizeof(v), "%.1f,%.1f,%.1f,%.1f,%.2f,%.2f,%.2f,%s",
+               heartRate, spo2, hrvRMSSD, respRate, ax, ay, az, actField);
+      chVitals->setValue(v); chVitals->notify();
+      Serial.print(">>> BLE notify (CSV) -> "); Serial.println(v);
+    }
+
+    // Serial line in the same style as your original firmware
+    Serial.printf("HR:%.2f SpO2:%.2f HRV(RMSSD):%.2f Resp(est):%.2f X:%.3f Y:%.3f Z:%.3f LocalFall:%s\n",
+                  heartRate, spo2, hrvRMSSD, respRate, ax, ay, az, fallDetected ? "yes" : "no");
+
   }
+  // Auto-clear the fall flag after the hold time so the alert doesn't stay forever
+  if (fallDetected && millis() - fallTime > FALL_HOLD_MS) fallDetected = false;
 
-  // FIX 3: Fall overlay — draw to buffer AND call display.display() so it actually shows
-  if (fallDetected) {
-    display.clearDisplay();
-    display.invertDisplay(true);
-    display.setTextSize(2);
-    display.setCursor(18, 18);
-    display.println("FALL!");
-    display.setTextSize(1);
-    display.setCursor(14, 44);
-    display.println("Check on wearer");
-    oledShow();
-    delay(2000);
-    display.invertDisplay(false);
-    display.clearDisplay();
-    oledShow();
-    return;              // ← skip normal vitals draw this cycle
+  // Refresh screen. Normally once a second (so the OLED's ~100 ms blocking write
+  // doesn't starve the MAX30100). During a fall, refresh faster so it blinks.
+  uint32_t screenInterval = fallDetected ? 350 : 1000;
+  if (oledOK && millis() - tsScreen > screenInterval) {
+    tsScreen = millis();
+    Wire.setClock(100000);                          // OLED needs 100 kHz; the MAX30100
+                                                    // lib leaves the bus at 400 kHz -> ghosting
+    if (fallDetected) {
+      drawFallAlert();                              // full-screen alert overrides both pages
+    } else {
+      static int cnt = 0;
+      if (++cnt % 4 == 0) showHealth = !showHealth; // swap page ~every 4 s
+      if (showHealth) drawHealth(); else drawMotion();
+    }
+    pox.update();                                   // drain FIFO right after the blocking write
   }
-
-  // HR (left) | SpO2 (right)
-  drawHeart(2, 14, animFrame % 2 == 0);
-
-  display.setTextSize(2);
-  display.setCursor(18, 13);
-  display.printf("%.0f", heartRate);
-  display.setTextSize(1);
-  display.setCursor(18, 30);
-  display.print("bpm");
-
-  display.drawFastVLine(64, 11, 28, SSD1306_WHITE);
-
-  display.setTextSize(2);
-  display.setCursor(70, 13);
-  display.printf("%.0f%%", spo2);
-  display.setTextSize(1);
-  display.setCursor(70, 30);
-  display.print("SpO2");
-
-  display.drawFastHLine(0, 40, 128, SSD1306_WHITE);
-
-  // Bottom row: HRV / RR / Activity
-  display.setTextSize(1);
-  display.setCursor(0, 43);
-  if (hrvSDNN > 0) display.printf("HRV:%.0fms", hrvSDNN);
-  else             display.print("HRV: --");
-
-  display.setCursor(0, 54);
-  if (respirationRate > 0) display.printf("RR:%.0f/min", respirationRate);
-  else                     display.print("RR: --");
-
-  // Activity badge
-  int bw = activityState.length() * 6 + 6;
-  int bx = 126 - bw;
-  display.drawRoundRect(bx, 47, bw, 14, 2, SSD1306_WHITE);
-  display.setCursor(bx + 3, 51);
-  display.print(activityState);
-
-  oledShow();
 }

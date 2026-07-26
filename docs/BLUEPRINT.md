@@ -201,7 +201,7 @@ Patient manages everything here:
 - BLE wearable service (`flutter_blue_plus`) + Mock data (dev mode)
 - Rule-based vital classification engine
 - 4-class health status engine: `Normal` / `Vitals Alert` / `Fall Alert` / `Emergency`
-- On-device ML — fall detection + emergency classification (TFLite)
+- On-device ML — fall detection + emergency classification (trained scikit-learn `GradientBoostingClassifier` + LightGBM `LGBMClassifier`, converted to native Dart via `m2cgen` — no TFLite runtime)
 - Emergency alert trigger (in-app chat + RTDB push + local notification)
 - AI Analysis screen with auto-analysis pipeline
 - Groq LLM chatbot with session history + markdown rendering
